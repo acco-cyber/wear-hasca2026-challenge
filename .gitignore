@@ -1,2 +1,7 @@
+data/
 skills/
-node_modules/
+upload/
+.env
+research/kernel_out/
+__pycache__/
+*.pyc
