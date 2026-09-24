@@ -18,7 +18,7 @@ def download(sbj, npy_path):
              f"train/videomae_feat/{sbj}.npy", "-p", "/tmp/dl_tmp", "--force"],
             capture_output=True, text=True, timeout=280,
             env={**os.environ, "PATH": "/home/z/.local/bin:" + os.environ["PATH"],
-                 "KAGGLE_API_TOKEN": "KGAT_d6f6367b0cee135abd9dbe0d7cf96388"})
+                 "KAGGLE_API_TOKEN": os.environ["KAGGLE_API_TOKEN"]})
         src_zip = f"/tmp/dl_tmp/{sbj}.npy.zip"
         src = f"/tmp/dl_tmp/{sbj}.npy"
         if os.path.exists(src_zip):

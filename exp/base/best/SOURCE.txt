@@ -1,0 +1,1 @@
+﻿best = h_bin03: flat = log-blend 0.5*v3b + 0.3*lgbm_v1 + 0.2*fusion_v1 (bl_v3b_v1_f); then binary null-vs-activity re-mass with bin_a, w=0.3 (hier.py). mrf4 eval 0.8150 extra 0.8716

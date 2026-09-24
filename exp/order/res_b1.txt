@@ -1,0 +1,8 @@
+e7                                                                                    eval 0.8224 extra 0.8637 extra2 0.8622 | all18 0.8495 | up 0 down 0
+{"fams": ["push"], "mode": "hard"}                                                    eval 0.8213 extra 0.8556 extra2 0.8647 | all18 0.8472 | up 9 down 9
+{"fams": ["push", "sit", "lun"], "mode": "hard"}                                      eval 0.7984 extra 0.8452 extra2 0.8509 | all18 0.8315 | up 5 down 13
+{"beta": 1.0, "fams": ["push"], "gamma": 2.0, "mode": "soft"}                         eval 0.8237 extra 0.8643 extra2 0.8625 | all18 0.8502 | up 9 down 2
+{"beta": 3.0, "fams": ["push"], "gamma": 2.0, "mode": "soft"}                         eval 0.8251 extra 0.8641 extra2 0.8652 | all18 0.8515 | up 9 down 7
+{"beta": 1.0, "fams": ["push", "sit", "lun"], "gamma": 2.0, "mode": "soft"}           eval 0.8242 extra 0.8646 extra2 0.8629 | all18 0.8505 | up 14 down 4
+{"beta": 2.0, "fams": ["push", "sit", "lun"], "gamma": 1.0, "mode": "soft"}           eval 0.8240 extra 0.8641 extra2 0.8624 | all18 0.8502 | up 12 down 6
+{"beta": 3.0, "fams": ["push", "sit", "lun"], "gamma": 3.0, "mode": "soft"}           eval 0.8263 extra 0.8654 extra2 0.8654 | all18 0.8524 | up 15 down 3

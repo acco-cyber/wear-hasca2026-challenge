@@ -1,3 +1,32 @@
+# Worklog — 3rd WEAR Dataset Challenge @ HASCA 2026
+
+## 2026-09-22
+Previous pipeline (limb-matched LightGBM + pooled video + video-kNN + public-kernel votes): best public 0.71528.
+
+## 2026-09-23
+- Research sweep (public kernels, 2026 repos, WEAR paper and past winners, test-data analysis, top-team intel): `research/`.
+- Found the test structure: every 1-s tile of 4 unseen subjects' sessions, shuffled; one random limb per window.
+- Kaggle prep kernel tiles train sessions in the exact test format; link scorer + chain reconstruction; simulation
+  harness on held-out train sessions with known order.
+- Submissions: 0.750 (timeline decode) -> 0.781 (votes) -> 0.817 (null/count calibration) -> 0.854 (mrf4 decoder)
+  -> 0.867 (v3b LightGBM) -> 0.8706 (3-model base + video-kNN refinement). Not kept: decode voting (0.8669),
+  pseudo-label self-training (0.8659), session-block prior (0.8705).
+
+## 2026-09-24
+- Full-data refits instead of 5-fold averages: 0.87409.
+- Vote weight of the strongest earlier pipeline: 1.6 -> 0.87265, 0.6 -> 0.85784 (keep 1.0).
+- Cross-limb continuity link features: +0.008 in simulation but 0.86504 on the leaderboard (dropped).
+- Activity-order / session-block decoders: flat in simulation (not submitted).
+- Soft full-data rebuild of the public akhyar hierarchical LightGBM as a blend member: 0.25 -> 0.88342,
+  0.45 -> 0.88501, 0.7 -> 0.88355.
+- + independent votes (abhinavm2811 notebook): 0.88679 (public rank 2).
+- 3-seed bag of the akhyar rebuild instead of the single seed: 0.88154 (seeds agree only ~84%; single-seed gain partly luck on the public subset).
+
+Lesson: on this test set (new subjects, new locations, different camera) the leaderboard rewards independent model
+evidence; decoder/link tweaks that only re-process our own predictions do not transfer below ~+0.01 simulated gain.
+
+## Earlier log (cloud sandbox session, 2026-09-22)
+
 ---
 Task ID: 1
 Agent: Super Z (main)

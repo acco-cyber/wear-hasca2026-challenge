@@ -1,0 +1,43 @@
+{
+ "0": {
+  "best_iter": 572,
+  "f1_rows": 0.8128241490004062,
+  "n_tr": 222607
+ },
+ "1": {
+  "best_iter": 185,
+  "f1_rows": 0.7476953390385501,
+  "n_tr": 212668
+ },
+ "2": {
+  "best_iter": 670,
+  "f1_rows": 0.8219452379074246,
+  "n_tr": 214403
+ },
+ "3": {
+  "best_iter": 534,
+  "f1_rows": 0.8366819065727504,
+  "n_tr": 222583
+ },
+ "4": {
+  "best_iter": 501,
+  "f1_rows": 0.8336875615321846,
+  "n_tr": 220087
+ },
+ "args": {
+  "tag": "bin_a",
+  "lr": 0.05,
+  "leaves": 63,
+  "limbs_per_sec": 4,
+  "null_x": 99.0,
+  "rounds": 1500,
+  "patience": 50,
+  "ff": 0.2,
+  "mdl": 60,
+  "drop": "",
+  "sim": false,
+  "threads": 3,
+  "fixed_rounds": 0,
+  "task": "binary"
+ }
+}

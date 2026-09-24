@@ -1,0 +1,5 @@
+e7                                                                          eval 0.8224 extra 0.8637 extra2 0.8622 | all18 0.8495 | up 0 down 0
+{"stage2": "restrict"}                                                      eval 0.8206 extra 0.8603 extra2 0.8599 | all18 0.8470 | up 6 down 12
+{"stage2": "argmax"}                                                        eval 0.8185 extra 0.8613 extra2 0.8608 | all18 0.8469 | up 6 down 12
+{"delta": 3.0, "stage2": "soft"}                                            eval 0.8227 extra 0.8617 extra2 0.8630 | all18 0.8491 | up 7 down 11
+{"flo": 0.0, "stage2": "restrict"}                                          eval 0.8213 extra 0.8597 extra2 0.8576 | all18 0.8462 | up 3 down 15

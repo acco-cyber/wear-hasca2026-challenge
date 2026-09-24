@@ -1,0 +1,13 @@
+{
+ "args": {
+  "tag": "pl_w03",
+  "labels": "labels_v3bv1f.pkl",
+  "test_sub": "E:\\Claude code\\wear\\subs\\sub_transductive_mrf4_knn_w6_d128.csv",
+  "w_ps": 0.3,
+  "w_test": null,
+  "round_mult": 1.0,
+  "threads": 6,
+  "seed": 0
+ },
+ "oof_f1_single": 0.7892794169800466
+}

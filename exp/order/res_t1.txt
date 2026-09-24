@@ -1,0 +1,9 @@
+e7                                                                          eval 0.8224 extra 0.8637 extra2 0.8622 | all18 0.8495 | up 0 down 0
+{"T": "uniform"}                                                            eval 0.8224 extra 0.8637 extra2 0.8622 | all18 0.8495 | up 0 down 0
+{"T": "emp", "eps": 0.5}                                                    eval 0.8223 extra 0.8633 extra2 0.8622 | all18 0.8493 | up 5 down 6
+{"T": "emp", "eps": 0.2}                                                    eval 0.8231 extra 0.8633 extra2 0.8625 | all18 0.8496 | up 7 down 6
+{"T": "null", "r": 5.0}                                                     eval 0.8222 extra 0.8637 extra2 0.8622 | all18 0.8494 | up 5 down 4
+{"T": "null", "r": 20.0}                                                    eval 0.8224 extra 0.8633 extra2 0.8622 | all18 0.8493 | up 5 down 5
+{"T": "uniform", "kappa": 0.3}                                              eval 0.8224 extra 0.8632 extra2 0.8628 | all18 0.8495 | up 8 down 7
+{"T": "uniform", "kappa": -0.3}                                             eval 0.8213 extra 0.8627 extra2 0.8618 | all18 0.8486 | up 7 down 11
+{"T": "emp", "both": 1, "eps": 0.2}                                         eval 0.8141 extra 0.8695 extra2 0.8635 | all18 0.8490 | up 11 down 7

@@ -1,0 +1,1 @@
+[{"variant":"mix6","steps":[{"w":6.0,"d_vid":128,"k":5,"alpha":0.9},{"w":6.0,"d_vid":128,"k":5,"alpha":0.9}]},{"variant":"mix6","steps":[{"w":10.0,"d_vid":128,"k":5,"alpha":0.9}]},{"variant":"mix6","steps":[{"w":6.0,"d_vid":128,"k":10,"alpha":0.9}]},{"variant":"mix6","steps":[{"w":6.0,"d_vid":64,"k":5,"alpha":0.95}]}]

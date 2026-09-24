@@ -1,0 +1,1 @@
+[{"stage2":"restrict"},{"stage2":"argmax"},{"stage2":"soft","delta":3.0},{"stage2":"restrict","flo":0.0}]

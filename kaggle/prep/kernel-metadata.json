@@ -1,0 +1,15 @@
+{
+  "id": "koushikrudra/wear-prep-windows",
+  "title": "wear-prep-windows",
+  "code_file": "prep.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": false,
+  "dataset_sources": [],
+  "competition_sources": ["3rd-wear-dataset-challenge-hasca-2026"],
+  "kernel_sources": [],
+  "model_sources": []
+}

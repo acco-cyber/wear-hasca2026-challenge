@@ -1,0 +1,6 @@
+e7                                                                                    eval 0.8224 extra 0.8637 extra2 0.8622 | all18 0.8495 | up 0 down 0
+{"beta": 5.0, "fams": ["push", "sit", "lun"], "gamma": 3.0, "mode": "soft"}           eval 0.8263 extra 0.8656 extra2 0.8650 | all18 0.8523 | up 14 down 4
+{"beta": 8.0, "fams": ["push", "sit", "lun"], "gamma": 3.0, "mode": "soft"}           eval 0.8255 extra 0.8657 extra2 0.8650 | all18 0.8521 | up 13 down 5
+{"beta": 5.0, "fams": ["push", "sit", "lun"], "gamma": 6.0, "mode": "soft"}           eval 0.8260 extra 0.8665 extra2 0.8648 | all18 0.8525 | up 14 down 4
+{"beta": 10.0, "fams": ["push", "sit", "lun"], "gamma": 6.0, "mode": "soft"}          eval 0.8249 extra 0.8633 extra2 0.8643 | all18 0.8508 | up 11 down 7
+{"beta": 5.0, "fams": ["push", "sit", "lun"], "gamma": 3.0, "mode": "soft", "rounds": 2} eval 0.8237 extra 0.8659 extra2 0.8678 | all18 0.8524 | up 13 down 5

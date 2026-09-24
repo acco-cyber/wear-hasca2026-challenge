@@ -1,0 +1,122 @@
+[
+{
+"clf": "none",
+"spec": "v768",
+"aug_k": 5,
+"aug_beta": 0.3
+},
+{
+"clf": "none",
+"spec": "v768",
+"aug_k": 5,
+"aug_beta": 0.6
+},
+{
+"clf": "none",
+"spec": "v768",
+"aug_k": 5,
+"aug_beta": 1.0
+},
+{
+"clf": "none",
+"spec": "v768",
+"aug_k": 10,
+"aug_beta": 0.3
+},
+{
+"clf": "none",
+"spec": "v768",
+"aug_k": 10,
+"aug_beta": 0.6
+},
+{
+"clf": "none",
+"spec": "v768",
+"aug_k": 10,
+"aug_beta": 1.0
+},
+{
+"clf": "ksmooth",
+"spec": "v768",
+"k": 5,
+"alpha": 0.5,
+"w": 0.5,
+"rounds": 1
+},
+{
+"clf": "ksmooth",
+"spec": "v768",
+"k": 5,
+"alpha": 0.5,
+"w": 1.0,
+"rounds": 1
+},
+{
+"clf": "ksmooth",
+"spec": "v768",
+"k": 5,
+"alpha": 0.8,
+"w": 0.5,
+"rounds": 1
+},
+{
+"clf": "ksmooth",
+"spec": "v768",
+"k": 5,
+"alpha": 0.8,
+"w": 1.0,
+"rounds": 1
+},
+{
+"clf": "ksmooth",
+"spec": "v768",
+"k": 10,
+"alpha": 0.5,
+"w": 0.5,
+"rounds": 1
+},
+{
+"clf": "ksmooth",
+"spec": "v768",
+"k": 10,
+"alpha": 0.5,
+"w": 1.0,
+"rounds": 1
+},
+{
+"clf": "ksmooth",
+"spec": "v768",
+"k": 10,
+"alpha": 0.8,
+"w": 0.5,
+"rounds": 1
+},
+{
+"clf": "ksmooth",
+"spec": "v768",
+"k": 10,
+"alpha": 0.8,
+"w": 1.0,
+"rounds": 1
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "marg",
+"q": 0.5,
+"rounds": 2
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 10,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "marg",
+"q": 0.5,
+"rounds": 2
+}
+]

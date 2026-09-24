@@ -1,0 +1,154 @@
+[
+{
+"clf": "ksmooth",
+"spec": "v768",
+"k": 20,
+"alpha": 0.8,
+"w": 1.0,
+"rounds": 1
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "marg",
+"q": 0.7,
+"rounds": 1
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "agree",
+"q": 0.7,
+"rounds": 1
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "all",
+"q": 0.7,
+"rounds": 1
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 1.0,
+"sel": "all",
+"q": 0.7,
+"rounds": 1
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 0.75,
+"sel": "agree",
+"q": 0.7,
+"rounds": 1
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 10,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "agree",
+"q": 0.7,
+"rounds": 1
+},
+{
+"steps": [
+{
+"clf": "ksmooth",
+"spec": "v768",
+"k": 20,
+"alpha": 0.8,
+"w": 1.0
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "agree",
+"q": 0.7
+}
+]
+},
+{
+"steps": [
+{
+"clf": "ksmooth",
+"spec": "v768",
+"k": 20,
+"alpha": 0.8,
+"w": 1.0
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "all",
+"q": 0.7
+}
+]
+},
+{
+"steps": [
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "agree",
+"q": 0.7
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "agree",
+"q": 0.7
+}
+]
+},
+{
+"steps": [
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "all",
+"q": 0.7
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "all",
+"q": 0.7
+}
+]
+}
+]

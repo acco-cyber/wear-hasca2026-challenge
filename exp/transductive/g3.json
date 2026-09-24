@@ -1,0 +1,130 @@
+[
+{
+"clf": "lr",
+"spec": "lp",
+"C": 1.0,
+"sel": "marg",
+"q": 0.5,
+"w": 0.5,
+"rounds": 1
+},
+{
+"clf": "lr",
+"spec": "lp",
+"C": 1.0,
+"sel": "agree",
+"w": 1.0,
+"rounds": 1
+},
+{
+"clf": "lr",
+"spec": "lp+v768",
+"C": 0.1,
+"sel": "marg",
+"q": 0.5,
+"w": 0.5,
+"rounds": 1
+},
+{
+"clf": "ksmooth",
+"spec": "v768",
+"k": 10,
+"alpha": 0.8,
+"w": 1.5,
+"rounds": 1
+},
+{
+"clf": "ksmooth",
+"spec": "v768",
+"k": 10,
+"alpha": 0.9,
+"w": 1.0,
+"rounds": 1
+},
+{
+"clf": "ksmooth",
+"spec": "v768",
+"k": 20,
+"alpha": 0.8,
+"w": 1.0,
+"rounds": 1
+},
+{
+"clf": "ksmooth",
+"spec": "vm",
+"k": 10,
+"alpha": 0.8,
+"w": 1.0,
+"rounds": 1
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 1.0,
+"sel": "marg",
+"q": 0.5,
+"rounds": 1
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 10,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "marg",
+"q": 0.5,
+"rounds": 1
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.99,
+"w": 0.5,
+"sel": "marg",
+"q": 0.5,
+"rounds": 1
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "marg",
+"q": 0.7,
+"rounds": 1
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "agree",
+"q": 0.5,
+"rounds": 1
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 0.5,
+"sel": "all",
+"q": 0.5,
+"rounds": 1
+},
+{
+"clf": "knn",
+"spec": "v768",
+"k": 5,
+"alpha": 0.9,
+"w": 0.3,
+"sel": "marg",
+"q": 0.5,
+"rounds": 1
+}
+]

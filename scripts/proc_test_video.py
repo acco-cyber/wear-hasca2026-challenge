@@ -16,7 +16,7 @@ for attempt in range(3):
                     "test/test_videomae_data.npy", "-p", "/tmp/dl_tmp", "--force"],
                    capture_output=True, text=True, timeout=540,
                    env={**os.environ, "PATH": "/home/z/.local/bin:" + os.environ["PATH"],
-                        "KAGGLE_API_TOKEN": "KGAT_d6f6367b0cee135abd9dbe0d7cf96388"})
+                        "KAGGLE_API_TOKEN": os.environ["KAGGLE_API_TOKEN"]})
     for cand in [f"/tmp/dl_tmp/test_videomae_data.npy.zip", f"/tmp/dl_tmp/test_videomae_data.npy"]:
         if os.path.exists(cand) and cand.endswith(".zip"):
             subprocess.run(["unzip", "-o", "-q", cand, "-d", "/tmp/dl_tmp"], check=True)

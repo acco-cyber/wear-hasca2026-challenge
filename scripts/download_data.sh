@@ -4,7 +4,7 @@
 # Wave 1: small files + test set | Wave 2: train inertial | Wave 3: train videomae
 cd /home/z/my-project/data
 export PATH="/home/z/.local/bin:$PATH"
-export KAGGLE_API_TOKEN=KGAT_d6f6367b0cee135abd9dbe0d7cf96388
+: "${KAGGLE_API_TOKEN:?set KAGGLE_API_TOKEN in your environment}"
 COMP=3rd-wear-dataset-challenge-hasca-2026
 
 WAVE=${1:-1}
