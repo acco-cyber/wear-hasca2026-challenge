@@ -7,7 +7,7 @@ ap.add_argument("--extra", default=None, help="comma list of npy_path:weight (lo
 ap.add_argument("--norm_total", type=float, default=0.0, help=">0: rescale the summed model log-probs so total model weight = this value (keeps decoder sharpness fixed)")
 a = ap.parse_args()
 L = 0; wsum = 0.0
-for spec in a.tags.split(","):
+for spec in ([] if a.tags in ("", "none") else a.tags.split(",")):
     t, w = spec.rsplit(":", 1); L = L + float(w) * np.log(np.clip(np.load(os.path.join(W, t, "test.npy")), 1e-6, 1)); wsum += float(w)
 if a.extra:
     for spec in a.extra.split(","):
