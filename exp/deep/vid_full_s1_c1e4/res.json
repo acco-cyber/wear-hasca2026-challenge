@@ -1,0 +1,25 @@
+{
+ "args": {
+  "expert": "vid",
+  "mode": "full",
+  "epochs": 4,
+  "seed": 1,
+  "threads": 3,
+  "tag": "c1e4",
+  "lr": 0.002,
+  "wd": 0.01,
+  "bs": 512,
+  "null_ratio": 2.5,
+  "wpow": 0.5,
+  "ls": 0.05,
+  "d": 128,
+  "layers": 2,
+  "hid": 96,
+  "drop": 0.1,
+  "limbs_per_sec": 2,
+  "noise": 0.1,
+  "shift": 1,
+  "subj_center": 1
+ },
+ "hist": []
+}

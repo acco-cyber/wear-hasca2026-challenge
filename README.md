@@ -2,7 +2,7 @@
 
 Kaggle: https://www.kaggle.com/competitions/3rd-wear-dataset-challenge-hasca-2026 (macro-F1 over 19 classes).
 
-Public leaderboard progress: 0.71528 (2026-09-22) -> **0.88679, rank 2** (2026-09-24).
+Public leaderboard progress: 0.71528 (2026-09-22) -> 0.88679, rank 2 (2026-09-24) -> **0.88791** (2026-09-25, weighted vote of top files; rank 6 on 09-26 as the leaders moved to 0.90-0.92).
 
 ## Key insight
 The test set is not a bag of independent windows. It is **every 1-second tile of 4 unseen subjects' sessions**,
@@ -41,8 +41,17 @@ decode it jointly, with per-activity duration constraints.
 | + soft full-data rebuild of the public akhyar hierarchical LightGBM (weight 0.45, `exp/aka/`) | 0.88501 |
 | + independent votes from the abhinavm2811 notebook | **0.88679** |
 
+| weighted vote over the 6 / 8 best leaderboard files (`src/vote_subs.py`) | 0.88718 / **0.88791** |
+
 Tried and not kept (lower public LB): voting over decodes, pseudo-label self-training, session-block prior,
-cross-limb link features, heavier/lighter vote weights, 3-seed bag of the akhyar rebuild (0.88154). Details and simulation numbers are in `research/` and `worklog.md`.
+cross-limb link features, heavier/lighter vote weights, 3-seed bag of the akhyar rebuild (0.88154), CPU deep window
+model (`exp/deep`, 0.87889), hierarchical LightGBM on v3b features (0.87800), public honghanhhh/sibamsamanta07 outputs
+as voters, UEC-dx2 CNN8 rebuild (`uec/cnn8`, 0.88315), weight-renormalised blends, link scorer refit on all sessions
+(0.88202). Every change that moves ~2-3% of windows away from the best recipe lands near 0.882, which suggests the
+best public files carry ~+0.005 of public-subset luck.
+
+Note: Windows application control on the dev machine blocks pandas' `indexing` and scikit-learn's `_loss` binaries;
+`shim/sitecustomize.py` (set `PYTHONPATH=shim`) and `exp/transductive/refine_ns.py` (NumPy kNN) work around it. Details and simulation numbers are in `research/` and `worklog.md`.
 
 ## Reproduce
 Set `KAGGLE_API_TOKEN` in your environment (never commit it). Run the prep and fusion kernels on Kaggle,

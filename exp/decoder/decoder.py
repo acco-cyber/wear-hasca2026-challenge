@@ -44,6 +44,9 @@ VARIANTS = {
     "mix6": dict(k=10, alpha=0.5, iters=5, kv=0, wv=0.0, thr=-6.0, lo=80, hi=250, ps=0.7, beta=None, lam=4.0, icm_iters=10, ns=0.5,
                  ens=[(1.0, 0), (1.0, 1), (1.0, 2), (0.5, 0), (0.5, 1), (0.5, 2)]),
 }
+# 2026-09-25 LB knobs on top of mrf4
+VARIANTS["mrf4_lo90"] = dict(VARIANTS["mrf4"], lo=90)
+VARIANTS["mrf4_ns06"] = dict(VARIANTS["mrf4"], ns=0.6)
 
 def edge_weights(packed, sc, beta, center=0.0):
     order, starts, lens = packed
