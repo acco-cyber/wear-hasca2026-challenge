@@ -22,6 +22,17 @@ Previous pipeline (limb-matched LightGBM + pooled video + video-kNN + public-ker
 - + independent votes (abhinavm2811 notebook): 0.88679 (public rank 2).
 - 3-seed bag of the akhyar rebuild instead of the single seed: 0.88154 (seeds agree only ~84%; single-seed gain partly luck on the public subset).
 
+## 2026-09-26 / 27
+- Full-data GPU refit of the fusion net (3 seeds): 0.88494 (5-fold average was 0.88679).
+- Window-only diagnostic of the e19 blend: 0.71256; the timeline decoder adds ~+0.175.
+- Rebuilt the public UEC-dx2 ensemble: K1 GPU kernel (CNN8+video, XceptionTime+video), K2 GPU kernel
+  (XceptionTime inertial, video MLP, video CNN), local inertial LightGBM (tile rows, lr 0.08, 900 iters).
+  Window-only LB of the K1 pair: 0.66793 (original ensemble 0.774; full-data fixed-epoch fits are weaker than
+  UEC's 5-fold early-stopped fold averages). 3-member core (LightGBM, CNN8+video, XceptionTime+video) as primary
+  base + v3b + akhyar rebuild + votes: 0.88795 (best single recipe). All 6 members: 0.88160; 4 inertial-carrying:
+  0.88673; core added to e19 at 1.0: 0.88418; core alone + votes: 0.87365.
+- Weighted vote over the 9 best files: 0.88934 (public rank 7; leaders 0.905-0.930).
+
 Lesson: on this test set (new subjects, new locations, different camera) the leaderboard rewards independent model
 evidence; decoder/link tweaks that only re-process our own predictions do not transfer below ~+0.01 simulated gain.
 

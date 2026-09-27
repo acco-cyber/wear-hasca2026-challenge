@@ -2,7 +2,7 @@
 
 Kaggle: https://www.kaggle.com/competitions/3rd-wear-dataset-challenge-hasca-2026 (macro-F1 over 19 classes).
 
-Public leaderboard progress: 0.71528 (2026-09-22) -> 0.88679, rank 2 (2026-09-24) -> **0.88791** (2026-09-25, weighted vote of top files; rank 6 on 09-26 as the leaders moved to 0.90-0.92).
+Public leaderboard progress: 0.71528 (2026-09-22) -> 0.88679, rank 2 (2026-09-24) -> 0.88791 (2026-09-25) -> **0.88934** (2026-09-27, rank 7; the leaders moved to 0.90-0.93).
 
 ## Key insight
 The test set is not a bag of independent windows. It is **every 1-second tile of 4 unseen subjects' sessions**,
@@ -41,7 +41,13 @@ decode it jointly, with per-activity duration constraints.
 | + soft full-data rebuild of the public akhyar hierarchical LightGBM (weight 0.45, `exp/aka/`) | 0.88501 |
 | + independent votes from the abhinavm2811 notebook | **0.88679** |
 
-| weighted vote over the 6 / 8 best leaderboard files (`src/vote_subs.py`) | 0.88718 / **0.88791** |
+| weighted vote over the 6 / 8 best leaderboard files (`src/vote_subs.py`) | 0.88718 / 0.88791 |
+| UEC-dx2 members rebuilt on Kaggle GPU (`kaggle/uec_k1`, `kaggle/uec_k2`) + local inertial LightGBM (`uec/gbdt`), 3-member core as primary base (`src/uec_assemble.py`) | 0.88795 |
+| weighted vote over the 9 best leaderboard files | **0.88934** |
+
+Diagnostics on the public LB: window-only argmax of our e19 blend = 0.71256 (the timeline decoder adds ~+0.175);
+window-only argmax of the rebuilt UEC CNN8+video / XceptionTime+video members = 0.66793 (UEC's original 6-model,
+5-fold, early-stopped ensemble reports 0.774). Adding UEC's video-only members (MLP/CNN) lowers the decoded score.
 
 Tried and not kept (lower public LB): voting over decodes, pseudo-label self-training, session-block prior,
 cross-limb link features, heavier/lighter vote weights, 3-seed bag of the akhyar rebuild (0.88154), CPU deep window

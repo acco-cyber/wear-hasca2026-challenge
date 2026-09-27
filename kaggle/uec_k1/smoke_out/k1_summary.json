@@ -1,0 +1,60 @@
+{
+ "sessions": [
+  {
+   "session": "sbj_5",
+   "sbj": 5,
+   "samples": 107525,
+   "windows": 4300,
+   "kept": 4215,
+   "skipped_label": 85,
+   "skipped_sensor": 0,
+   "skipped_video": 0,
+   "video": "raw"
+  },
+  {
+   "session": "sbj_9",
+   "sbj": 9,
+   "samples": 108300,
+   "windows": 4331,
+   "kept": 4281,
+   "skipped_label": 50,
+   "skipped_sensor": 0,
+   "skipped_video": 0,
+   "video": "raw"
+  },
+  {
+   "session": "sbj_20",
+   "sbj": 20,
+   "samples": 95400,
+   "windows": 3815,
+   "kept": 1891,
+   "skipped_label": 42,
+   "skipped_sensor": 0,
+   "skipped_video": 1882,
+   "video": "pca"
+  }
+ ],
+ "windows": 10387,
+ "samples": 41548,
+ "test_rows": 12234,
+ "epochs": {
+  "cnn8": 1,
+  "xcep": 1
+ },
+ "models": {
+  "cnn8": {
+   "out": "test_cnn8.npy",
+   "history": [
+    {
+     "epoch": 1,
+     "train_loss": 2.7689705451329547,
+     "lr": 0.0005,
+     "batches": 30,
+     "epoch_sec": 100.4,
+     "elapsed_sec": 150.5
+    }
+   ],
+   "epochs_done": 1
+  }
+ }
+}

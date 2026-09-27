@@ -19,7 +19,7 @@ import numpy as np
 HERE = r"E:\Claude code\wear\uec\gbdt"
 FEATS = os.path.join(HERE, "feats")
 N_CLASSES = 19
-THREADS = 4
+THREADS = int(os.environ.get("THREADS", "4"))
 
 
 def log(*a):
@@ -120,6 +120,7 @@ def main():
     ap.add_argument("mode", choices=["manifest", "std", "full"])
     ap.add_argument("folds", type=int, nargs="*")
     ap.add_argument("--iters", type=int, default=None)
+    ap.add_argument("--lr", type=float, default=0.03); ap.add_argument("--tile_only", action="store_true", help="full mode: only stride-50 (tile-aligned) rows")
     a = ap.parse_args()
     X, M = load_all()
     Xtest = load_test()
@@ -152,12 +153,15 @@ def main():
         assert a.iters, "--iters required"
         outdir = os.path.join(HERE, "full")
         os.makedirs(outdir, exist_ok=True)
-        tr = repo
+        tr = repo & ((M["start"] % 50 == 0) if a.tile_only else True)
         cw = balanced_class_weights(M["y"][tr])
-        log(f"full fit rows={tr.sum()} iters={a.iters} subjects={subjects}")
-        model = make_model(a.iters, cw)
+        log(f"full fit rows={tr.sum()} iters={a.iters} lr={a.lr} tile_only={a.tile_only} subjects={subjects}")
+        model = make_model(a.iters, cw); model.set_params(learning_rate=a.lr)
         t0 = time.time()
-        model.fit(X[tr], M["y"][tr])
+        def cb(env):
+            if env.iteration % 100 == 0:
+                log(f"  iter {env.iteration} ({time.time() - t0:.0f}s)")
+        model.fit(X[tr], M["y"][tr], callbacks=[cb])
         log(f"fit {time.time() - t0:.0f}s")
         P = align(model, model.predict_proba(Xtest))
         np.save(os.path.join(outdir, "test_prob.npy"), P)
