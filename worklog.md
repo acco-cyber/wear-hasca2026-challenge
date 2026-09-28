@@ -48,7 +48,12 @@ evidence; decoder/link tweaks that only re-process our own predictions do not tr
 - Family combination (`exp/hyb/combo_cv.py`, our OOF decoded labels for 18 sessions mapped to their rows): probability
   product hurts; confidence gate (their calibrated confidence < 0.6 -> our label) +0.005 in CV -> LB **0.90954** (rank 5).
   Gate with the "our label must be their top-2" rule at 0.7 (CV +0.007) -> 0.90852 on the public LB.
-- Board end of day: Nicolas 0.93334, Soheil 0.92154, localAI 0.91675, Mateo 0.91484, us 0.90954.
+- Second batch (4 subs): our labels inside their graph stage (`exp/hyb/graph_lab.py`): pseudo-label prior in the
+  self-training rounds (CV +0.005 at 0.3), Sinkhorn count targets from our per-subject class counts (+0.003 at 0.5, hurts
+  at 1.0), both on top of the top-2 gate: CV 0.8862 (gate 0.6) / 0.8871 (gate 0.55) vs plain gate 0.8839.
+  LB: prior+counts+gate 0.6 = 0.91021; gate on the 3-run average P 0.90899; majority vote 0.90959; gate 0.55 = **0.91044**.
+  Class-conditional gating (pair table, split-half checked) and per-subject quantile gating: +0.0005 in CV, not used.
+- Board end of day: Nicolas 0.93334, Soheil 0.92154, localAI 0.91675, Mateo 0.91484, us 0.91044 (rank 5).
 
 ## Earlier log (cloud sandbox session, 2026-09-22)
 

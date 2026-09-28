@@ -2,7 +2,7 @@
 
 Kaggle: https://www.kaggle.com/competitions/3rd-wear-dataset-challenge-hasca-2026 (macro-F1 over 19 classes).
 
-Public leaderboard progress: 0.71528 (2026-09-22) -> 0.88679, rank 2 (2026-09-24) -> 0.88791 (2026-09-25) -> 0.88934 (2026-09-27, rank 7) -> **0.90954** (2026-09-28, rank 5; leaders 0.915-0.933).
+Public leaderboard progress: 0.71528 (2026-09-22) -> 0.88679, rank 2 (2026-09-24) -> 0.88791 (2026-09-25) -> 0.88934 (2026-09-27, rank 7) -> **0.91044** (2026-09-28, rank 5; leaders 0.915-0.933).
 
 ## 2026-09-28: two decoder families combined
 The Hanbat team published their full pipeline as a Kaggle notebook (woominyo, "WEAR@HASCA 2026 | Timeline Reconstruction + Graph",
@@ -11,9 +11,11 @@ intermediate arrays as output) reproduced it at **0.90581**. Their gain is the *
 log-probs -> label propagation with self-training -> per-subject Sinkhorn count calibration): their tabular base under our
 mrf4 decoder scores only 0.88184. Our decoder's labels and their calibrated probabilities disagree on ~7% of windows, and a
 confidence gate validated on 18 held-out sessions (`exp/hyb/combo_cv.py`) combines them: where their calibrated confidence is
-below 0.6, take our e44 label -> **0.90954**. Local re-runs of their tabular + graph stages (`exp/hyb/hanbat_stack.py`) let us
-inject our base models and 5-fold UEC members (`kaggle/uec_k3/`) into their stacker (CV 0.8790 -> 0.8827), which did not
-transfer to the public leaderboard (0.90398).
+below 0.6, take our e44 label -> 0.90954. Going one step deeper (`exp/hyb/graph_lab.py`): our labels also enter their
+self-training rounds as a pseudo-label prior (weight 0.3) and their Sinkhorn class-count targets (weight 0.3), and the gate
+only fires when our label is their first or second choice -> **0.91044**. Local re-runs of their tabular + graph stages
+(`exp/hyb/hanbat_stack.py`) let us inject our base models and 5-fold UEC members (`kaggle/uec_k3/`) into their stacker
+(CV 0.8790 -> 0.8827), which did not transfer to the public leaderboard (0.90398).
 
 ## Key insight
 The test set is not a bag of independent windows. It is **every 1-second tile of 4 unseen subjects' sessions**,
@@ -58,8 +60,12 @@ decode it jointly, with per-activity duration constraints.
 | Hanbat notebook reproduced on GPU T4x2 (`kaggle/hanbat_gpu`) | 0.90581 |
 | their tabular base under our mrf4 decoder (`exp/hyb/dec_hanbat.py`) | 0.88184 |
 | their stacker with our v3b/v1/fusion + 5-fold UEC cnn8/xcep OOF columns (`exp/hyb/hanbat_stack.py`, `kaggle/uec_k3`) | 0.90398 |
-| confidence gate: their graph output, our e44 label where their calibrated confidence < 0.6 (`exp/hyb/gate_test.py`) | **0.90954** |
-| same gate, threshold 0.7 with the "our label must be their top-2" rule (best in CV) | 0.90852 |
+| confidence gate: their graph output, our e44 label where their calibrated confidence < 0.6 (`exp/hyb/gate_test.py`) | 0.90954 |
+| same gate, threshold 0.7 with the "our label must be their top-2" rule | 0.90852 |
+| graph stage re-run with our labels as self-training prior 0.3 + count targets 0.3 + top-2 gate 0.6 (`exp/hyb/graph_lab.py`) | 0.91021 |
+| top-2 gate 0.65 on the average of three graph outputs | 0.90899 |
+| majority vote of the three files above | 0.90959 |
+| prior 0.3 + count targets 0.3 + top-2 gate 0.55 (CV best) | **0.91044** |
 
 Diagnostics on the public LB: window-only argmax of our e19 blend = 0.71256 (the timeline decoder adds ~+0.175);
 window-only argmax of the rebuilt UEC CNN8+video / XceptionTime+video members = 0.66793 (UEC's original 6-model,
