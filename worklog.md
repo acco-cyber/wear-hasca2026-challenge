@@ -36,6 +36,20 @@ Previous pipeline (limb-matched LightGBM + pooled video + video-kNN + public-ker
 Lesson: on this test set (new subjects, new locations, different camera) the leaderboard rewards independent model
 evidence; decoder/link tweaks that only re-process our own predictions do not transfer below ~+0.01 simulated gain.
 
+## 2026-09-28 (5 submissions)
+- Found the Hanbat team's public notebook (woominyo, Apache 2.0; their LB 0.903, public CPU run 0.890). Forked it to a
+  GPU T4x2 kernel that keeps every intermediate array (`kaggle/hanbat_gpu/patch_nb.py`): window blend OOF 0.7234, 50 min.
+  Reproduction: 0.90581. Their OOF tiles are exactly our 69,326 train rows (`exp/hyb/align_rows.py`).
+- Their tabular base under our decoder: 0.88184 -> their graph propagation + Sinkhorn decoder is the gain, not their base.
+- `kaggle/uec_k3`: 5-fold UEC CNN8+video / XceptionTime+video with OOF tile predictions (45 min GPU); OOF window F1
+  0.679 / 0.691 on their tiles (our v3b 0.652). Injected with our v3b/v1/fusion into their S3 stacker
+  (`exp/hyb/hanbat_stack.py`): S3 OOF 0.8116 -> 0.8246, graph CV 0.8790 -> 0.8827, LB 0.90398 (no transfer).
+  K3 members in the window blend: CV 0.8798; our OOF base mixed into the graph input: 0.8707 (hurts).
+- Family combination (`exp/hyb/combo_cv.py`, our OOF decoded labels for 18 sessions mapped to their rows): probability
+  product hurts; confidence gate (their calibrated confidence < 0.6 -> our label) +0.005 in CV -> LB **0.90954** (rank 5).
+  Gate with the "our label must be their top-2" rule at 0.7 (CV +0.007) -> 0.90852 on the public LB.
+- Board end of day: Nicolas 0.93334, Soheil 0.92154, localAI 0.91675, Mateo 0.91484, us 0.90954.
+
 ## Earlier log (cloud sandbox session, 2026-09-22)
 
 ---

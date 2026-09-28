@@ -73,7 +73,7 @@ def align(model, P):
     return out
 
 
-def fit_fold(X, M, tr, va, tag, outdir, Xtest, extra_pred=None):
+def fit_fold(X, M, tr, va, tag, outdir, Xtest, extra_pred=None, fixed_iters=None, lr=0.03):
     import lightgbm as lgb
     from sklearn.metrics import f1_score, accuracy_score
     os.makedirs(outdir, exist_ok=True)
@@ -82,12 +82,20 @@ def fit_fold(X, M, tr, va, tag, outdir, Xtest, extra_pred=None):
         return json.load(open(os.path.join(outdir, "done.json")))
     ytr, yva = M["y"][tr], M["y"][va]
     cw = balanced_class_weights(ytr)
-    log(tag, f"train={tr.sum()} val={va.sum()} val_sbj={sorted(set(M['sbj'][va].tolist()))}")
-    model = make_model(3000, cw)
+    log(tag, f"train={tr.sum()} val={va.sum()} val_sbj={sorted(set(M['sbj'][va].tolist()))} fixed_iters={fixed_iters} lr={lr}")
     t0 = time.time()
-    model.fit(X[tr], ytr, eval_set=[(X[va], yva)], eval_metric="multi_logloss",
-              callbacks=[lgb.early_stopping(100, verbose=True), lgb.log_evaluation(50)])
-    best = int(model.best_iteration_ or 3000)
+    if fixed_iters:
+        model = make_model(fixed_iters, cw); model.set_params(learning_rate=lr)
+        def cb(env):
+            if env.iteration % 100 == 0:
+                log(tag, f"iter {env.iteration} ({time.time() - t0:.0f}s)")
+        model.fit(X[tr], ytr, callbacks=[cb])
+        best = int(fixed_iters)
+    else:
+        model = make_model(3000, cw)
+        model.fit(X[tr], ytr, eval_set=[(X[va], yva)], eval_metric="multi_logloss",
+                  callbacks=[lgb.early_stopping(100, verbose=True), lgb.log_evaluation(50)])
+        best = int(model.best_iteration_ or 3000)
     Pva = align(model, model.predict_proba(X[va]))
     f1 = float(f1_score(yva, Pva.argmax(1), average="macro", zero_division=0))
     acc = float(accuracy_score(yva, Pva.argmax(1)))
@@ -120,7 +128,8 @@ def main():
     ap.add_argument("mode", choices=["manifest", "std", "full"])
     ap.add_argument("folds", type=int, nargs="*")
     ap.add_argument("--iters", type=int, default=None)
-    ap.add_argument("--lr", type=float, default=0.03); ap.add_argument("--tile_only", action="store_true", help="full mode: only stride-50 (tile-aligned) rows")
+    ap.add_argument("--lr", type=float, default=0.03); ap.add_argument("--tile_only", action="store_true", help="full/std mode: only stride-50 (tile-aligned) training rows")
+    ap.add_argument("--no_es", action="store_true", help="std mode: fixed --iters instead of early stopping")
     a = ap.parse_args()
     X, M = load_all()
     Xtest = load_test()
@@ -145,10 +154,10 @@ def main():
                 continue
             vs = [s for s, f in fold_of.items() if f == fi]
             va = repo & np.isin(M["sbj"], vs)
-            tr = repo & ~np.isin(M["sbj"], vs)
+            tr = repo & ~np.isin(M["sbj"], vs) & ((M["start"] % 50 == 0) if a.tile_only else True)
             tiles = np.isin(M["sbj"], vs) & (M["start"] % 50 == 0)
             fit_fold(X, M, tr, va, f"std f{fi} {vs}", os.path.join(HERE, "std_cv", f"fold_{fi:02d}"), Xtest,
-                     extra_pred=tiles)
+                     extra_pred=tiles, fixed_iters=a.iters if a.no_es else None, lr=a.lr)
     else:
         assert a.iters, "--iters required"
         outdir = os.path.join(HERE, "full")

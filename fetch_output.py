@@ -25,8 +25,11 @@ print("files:", [n for n in names if "/" not in n or n.count("/") <= 1 and not n
 os.makedirs(out, exist_ok=True)
 for f in files:
     name = f.file_name; url = f.url
-    if name not in wanted: continue
+    if not (name in wanted or "all" in wanted or any(w.endswith("/") and name.startswith(w) for w in wanted)): continue
     dest = os.path.join(out, name); tmp = dest + ".part"
+    os.makedirs(os.path.dirname(dest) or out, exist_ok=True)
+    if os.path.exists(dest) and os.path.getsize(dest) == (f.file_size if hasattr(f, "file_size") and f.file_size else -1):
+        print("have", name); continue
     have = os.path.getsize(tmp) if os.path.exists(tmp) else 0
     t0 = time.time()
     for attempt in range(20):

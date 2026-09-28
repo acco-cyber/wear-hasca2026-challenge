@@ -1,0 +1,116 @@
+{
+ "sessions": [
+  {
+   "session": "sbj_20",
+   "sbj": 20,
+   "samples": 95400,
+   "windows": 3815,
+   "kept": 1891,
+   "skipped_label": 42,
+   "skipped_sensor": 0,
+   "skipped_video": 1882,
+   "video": "pca"
+  },
+  {
+   "session": "sbj_5",
+   "sbj": 5,
+   "samples": 107525,
+   "windows": 4300,
+   "kept": 4215,
+   "skipped_label": 85,
+   "skipped_sensor": 0,
+   "skipped_video": 0,
+   "video": "raw"
+  },
+  {
+   "session": "sbj_9",
+   "sbj": 9,
+   "samples": 108300,
+   "windows": 4331,
+   "kept": 4281,
+   "skipped_label": 50,
+   "skipped_sensor": 0,
+   "skipped_video": 0,
+   "video": "raw"
+  }
+ ],
+ "windows": 10387,
+ "tile_rows": 6224,
+ "epochs": {
+  "cnn8": 1,
+  "xcep": 1
+ },
+ "folds": {
+  "0": [
+   5
+  ],
+  "1": [
+   9
+  ],
+  "2": [
+   20
+  ]
+ },
+ "runs": [
+  {
+   "fold": 0,
+   "model": "cnn8",
+   "epochs": 1,
+   "history": [
+    {
+     "epoch": 1,
+     "train_loss": 2.779080533981323,
+     "lr": 0.0005,
+     "batches": 25,
+     "epoch_sec": 39.3
+    }
+   ],
+   "elapsed": 103
+  },
+  {
+   "fold": 0,
+   "model": "xcep",
+   "epochs": 1,
+   "history": [
+    {
+     "epoch": 1,
+     "train_loss": 2.6365238571166993,
+     "lr": 0.0005,
+     "batches": 25,
+     "epoch_sec": 375.0
+    }
+   ],
+   "elapsed": 549
+  },
+  {
+   "fold": 1,
+   "model": "cnn8",
+   "epochs": 1,
+   "history": [
+    {
+     "epoch": 1,
+     "train_loss": 2.7808861831823983,
+     "lr": 0.0005,
+     "batches": 24,
+     "epoch_sec": 37.6
+    }
+   ],
+   "elapsed": 594
+  },
+  {
+   "fold": 1,
+   "model": "xcep",
+   "epochs": 1,
+   "history": [
+    {
+     "epoch": 1,
+     "train_loss": 2.6333220501740775,
+     "lr": 0.0005,
+     "batches": 24,
+     "epoch_sec": 185.3
+    }
+   ],
+   "elapsed": 860
+  }
+ ]
+}
