@@ -2,7 +2,7 @@
 
 Kaggle: https://www.kaggle.com/competitions/3rd-wear-dataset-challenge-hasca-2026 (macro-F1 over 19 classes).
 
-Public leaderboard progress: 0.71528 (2026-09-22) -> 0.88679, rank 2 (2026-09-24) -> 0.88791 (2026-09-25) -> 0.88934 (2026-09-27, rank 7) -> **0.91044** (2026-09-28, rank 5; leaders 0.915-0.933).
+Public leaderboard progress: 0.71528 (2026-09-22) -> 0.88679, rank 2 (2026-09-24) -> 0.88791 (2026-09-25) -> 0.88934 (2026-09-27, rank 7) -> 0.91044 (2026-09-28, rank 5) -> **0.91289** (2026-09-29, rank 7; leaders 0.921-0.937).
 
 ## 2026-09-28: two decoder families combined
 The Hanbat team published their full pipeline as a Kaggle notebook (woominyo, "WEAR@HASCA 2026 | Timeline Reconstruction + Graph",
@@ -65,7 +65,16 @@ decode it jointly, with per-activity duration constraints.
 | graph stage re-run with our labels as self-training prior 0.3 + count targets 0.3 + top-2 gate 0.6 (`exp/hyb/graph_lab.py`) | 0.91021 |
 | top-2 gate 0.65 on the average of three graph outputs | 0.90899 |
 | majority vote of the three files above | 0.90959 |
-| prior 0.3 + count targets 0.3 + top-2 gate 0.55 (CV best) | **0.91044** |
+| prior 0.3 + count targets 0.3 + top-2 gate 0.55 | 0.91044 |
+| same + our chain links unioned with their L2 links in the graph stage (`graph_lab.py --extra_links`) | **0.91289** |
+| same + our top-2 candidate successors as edges, gate 0.5 (CV best 0.8898) | 0.90957 |
+| same as 0.91289 + their L0 links as a third link set | 0.90955 |
+
+2026-09-29 analysis (`exp/hyb/err_anatomy.py`, `exp/hyb/agents/`): on the train tiles 95.4% of activity bouts already have
+the right majority label and a bout-majority oracle scores 0.972, so the remaining errors are within-bout grouping, not
+classification. Coarse time order is not recoverable from the video (seriation errors 270-550 s; a time decoder needs
+< 45 s), block/session priors add +0.001 (the block is already right for 98.6% of activity windows), and explicit bout
+clustering scores below the baseline; a kNN ICM relabelling adds +0.005 alone but nothing on top of the gate recipe.
 
 Diagnostics on the public LB: window-only argmax of our e19 blend = 0.71256 (the timeline decoder adds ~+0.175);
 window-only argmax of the rebuilt UEC CNN8+video / XceptionTime+video members = 0.66793 (UEC's original 6-model,

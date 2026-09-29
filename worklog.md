@@ -55,6 +55,19 @@ evidence; decoder/link tweaks that only re-process our own predictions do not tr
   Class-conditional gating (pair table, split-half checked) and per-subject quantile gating: +0.0005 in CV, not used.
 - Board end of day: Nicolas 0.93334, Soheil 0.92154, localAI 0.91675, Mateo 0.91484, us 0.91044 (rank 5).
 
+## 2026-09-29 (3 submissions)
+- Error anatomy with true order (`exp/hyb/err_anatomy.py`): 95.4% of activity bouts have the correct majority label;
+  bout-majority oracle 0.9718 vs 0.8827; errors 34% boundary, 47% scattered inside bouts, 19% whole-bout.
+- Four subagents (`exp/hyb/agents/`): research (test session structure in participant_meta_data.txt: sbj_22/23 = 9+8+1
+  activities, sbj_24/25 = 9+9; each 9-activity session is one protocol block; no public hints from the leaders);
+  time-order seriation fails (median error 270-550 s, needs < 45 s); block/session prior +0.0018 at best (block already
+  right for 98.6% of activity windows; video clusters follow posture, not session); bout clustering below baseline, kNN
+  ICM relabelling +0.0053 alone but +0.0008 on top of the gate recipe.
+- Link density in their graph stage (`exp/hyb/graph_lab.py`): union with our chain links CV 0.8871 -> 0.8882, LB
+  **0.91289**; adding our top-2 candidate successors (CV 0.8898) -> 0.90957; adding their L0 links -> 0.90955.
+  One-to-one assignment links transfer, candidate lists do not; changes of ~1% of labels move the public score by 0.003.
+- Board: Mateo 0.93661, Nicolas 0.93334, localAI 0.92368, Anonym 0.92232, Soheil 0.92154, Free Chicken 0.92142, us 0.91289.
+
 ## Earlier log (cloud sandbox session, 2026-09-22)
 
 ---

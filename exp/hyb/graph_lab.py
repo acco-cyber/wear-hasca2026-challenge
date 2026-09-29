@@ -34,6 +34,10 @@ def calibrate_targets(P, sbj, targets, iters=50):
 class Runner2(H.Runner):
     def __init__(self, dd, targets, OH, m, K=40, b=0.0):
         super().__init__(dd, K=K, b=b); self.targets = targets; self.OH = OH; self.m = m
+        if dd.get("succ2") is not None:          # union with a second link set (our chain links)
+            self.Lw = self.Lw + dd.get("xl_w", 1.0) * link_W(dd["succ2"], dd["score2"], len(self.P0), b=dd.get("xl_b", b))
+        for su, sc, w in dd.get("xlinks", []):    # further link sets (candidate ranks, other stages)
+            self.Lw = self.Lw + w * link_W(su, sc, len(self.P0), b=dd.get("xl_b", b))
 
     def cal(self, P, T):
         return calibrate_targets(_norm_rows(P ** T), self.d["sbj"], self.targets)
@@ -117,6 +121,12 @@ def run(dd, ours, has, a, eval_y=None, tag="", other=None):
         lab, g = apply_gate(base, Q, ours, has, tau, rule, other=other, sbj=sbj)
         if eval_y is None:
             print(f"gated {g.mean():.4f}, per subject " + str({int(s): round(float(g[sbj == s].mean()), 3) for s in np.unique(sbj)}))
+    if a.icm:                                  # bout agent's kNN Potts/ICM relabelling, same targets as the recipe
+        sys.path.insert(0, os.path.join(HYB, "agents", "bout")); from bout_icm import decode as icm_decode
+        E = dd["emb"] / (np.linalg.norm(dd["emb"], axis=1, keepdims=True) + 1e-6)
+        k_, a_, st_ = (float(x) for x in a.icm.split(","))
+        lab0 = lab; lab = icm_decode(P, Q, E, sbj, lab.astype(np.int64), use_p=1.0, k=int(k_), a=a_, stick=st_)
+        print(f"ICM changed {np.mean(lab != lab0):.4f}", flush=True)
     if eval_y is not None:
         S = has
         print(f"{tag} prior={a.prior} counts={a.counts} gate={a.gate}: F1(all) {macro_f1(eval_y, lab):.4f} F1(S) {macro_f1(eval_y[S], lab[S]):.4f}"
@@ -129,6 +139,11 @@ def main():
     ap.add_argument("out", nargs="?"); ap.add_argument("--prior", type=float, default=0.0); ap.add_argument("--counts", type=float, default=0.0)
     ap.add_argument("--gate", default=""); ap.add_argument("--tag", default="")
     ap.add_argument("--other", default="", help="labels for the 'agree' rule: .npy (cv, their rows) or .csv (test)")
+    ap.add_argument("--extra_links", action="store_true", help="add our chain links (sim structs / work/test_structure.pkl)")
+    ap.add_argument("--xl_w", type=float, default=1.0); ap.add_argument("--xl_b", type=float, default=-2.0)
+    ap.add_argument("--icm", default="", help="k,a,stick for the kNN ICM relabelling, e.g. 5,4.0,0.1")
+    ap.add_argument("--xl_cand", type=int, default=0, help="also add our top-m candidate successors (beyond succ0) as edges")
+    ap.add_argument("--xl_cand_w", type=float, default=0.5); ap.add_argument("--xl_l0", type=float, default=0.0, help="test: weight of their L0 links as extra set")
     a = ap.parse_args()
     other = None
     if a.other:
@@ -143,6 +158,24 @@ def main():
         for s, d in R.items():
             ours[o2t[int(d["a"]):int(d["a"]) + int(d["n"])]] = np.asarray(d["lab"])
         has = ours >= 0
+        if a.extra_links:
+            sys.path.insert(0, os.path.join(W, "exp", "transductive")); from tlib import load_structs
+            s2 = np.full(len(has), -1, np.int64); c2 = np.full(len(has), -50.0, np.float32)
+            cs = [np.full(len(has), -1, np.int64) for _ in range(a.xl_cand)]; cc = [np.full(len(has), -50.0, np.float32) for _ in range(a.xl_cand)]
+            for which in ("eval", "extra", "extra2"):
+                for s, st in load_structs(which).items():
+                    a0, n = int(st["a"]), int(st["n"]); su = np.asarray(st["succ0"]); sc = np.asarray(st["sc"], np.float32)
+                    ok = (su >= 0) & (sc >= -6.0); rows_t = o2t[a0 + np.arange(n)]
+                    s2[rows_t[ok]] = o2t[a0 + su[ok]]; c2[rows_t[ok]] = sc[ok]
+                    if a.xl_cand:
+                        cand, lo = np.asarray(st["cand"]), np.asarray(st["lo"], np.float32)
+                        lo = np.where((cand >= 0) & (cand != su[:, None]), lo, -1e9); order = np.argsort(-lo, 1)
+                        for r in range(a.xl_cand):
+                            cj = cand[np.arange(n), order[:, r]]; lj = lo[np.arange(n), order[:, r]]; okc = (cj >= 0) & (lj >= -3.0)
+                            cs[r][rows_t[okc]] = o2t[a0 + cj[okc]]; cc[r][rows_t[okc]] = lj[okc]
+            dd.update(succ2=s2, score2=c2, xl_w=a.xl_w, xl_b=a.xl_b, xlinks=[(cs[r], cc[r], a.xl_cand_w) for r in range(a.xl_cand)])
+            print(f"extra links: {np.mean(s2 >= 0):.3f} of rows; same-label {np.mean(sm['y'][s2[s2 >= 0]] == sm['y'][s2 >= 0]):.3f}; "
+                  f"L0 same-label {np.mean(sm['y'][dd['succ'][dd['succ'] >= 0]] == sm['y'][dd['succ'] >= 0]):.3f}")
         run(dd, np.where(has, ours, 0), has, a, eval_y=sm["y"], tag=a.tag or os.path.basename(a.logp), other=other)
     else:
         bl = np.load(os.path.join(KEEP, "blend.npz")); l2 = np.load(os.path.join(KEEP, "links_L2_test.npz"))
@@ -150,6 +183,23 @@ def main():
         dd = dict(logp=np.load(a.logp).astype(np.float32), emb=np.load(os.path.join(KEEP, "test_emb.npy")).astype(np.float32),
                   grp=sbj, sbj=sbj, succ=l2["succ"].astype(np.int64), score=l2["score_qn"].astype(np.float32), sets={})
         ours = pd.read_csv(a.ours).sort_values("id").target_feature.to_numpy().astype(int); has = np.ones(len(ours), bool)
+        if a.extra_links:
+            struct = pickle.load(open(os.path.join(W, "work", "test_structure.pkl"), "rb"))
+            s2 = np.full(len(ours), -1, np.int64); c2 = np.full(len(ours), -50.0, np.float32)
+            cs = [np.full(len(ours), -1, np.int64) for _ in range(a.xl_cand)]; cc = [np.full(len(ours), -50.0, np.float32) for _ in range(a.xl_cand)]
+            for s, st in struct.items():
+                idx = np.asarray(st["idx"]); su = np.asarray(st["succ0"]); sc = np.asarray(st["sc"], np.float32); ok = (su >= 0) & (sc >= -6.0)
+                s2[idx[ok]] = idx[su[ok]]; c2[idx[ok]] = sc[ok]; n = len(idx)
+                if a.xl_cand:
+                    cand, lo = np.asarray(st["cand"]), np.asarray(st["lo"], np.float32)
+                    lo = np.where((cand >= 0) & (cand != su[:, None]), lo, -1e9); order = np.argsort(-lo, 1)
+                    for r in range(a.xl_cand):
+                        cj = cand[np.arange(n), order[:, r]]; lj = lo[np.arange(n), order[:, r]]; okc = (cj >= 0) & (lj >= -3.0)
+                        cs[r][idx[okc]] = idx[cj[okc]]; cc[r][idx[okc]] = lj[okc]
+            xl = [(cs[r], cc[r], a.xl_cand_w) for r in range(a.xl_cand)]
+            if a.xl_l0 > 0:
+                l0 = np.load(os.path.join(KEEP, "links_L0.npz")); xl.append((l0["test_succ"].astype(np.int64), l0["test_score"].astype(np.float32), a.xl_l0))
+            dd.update(succ2=s2, score2=c2, xl_w=a.xl_w, xl_b=a.xl_b, xlinks=xl); print(f"extra links on test: {np.mean(s2 >= 0):.3f} of rows; extra sets {len(xl)}")
         lab, P = run(dd, ours, has, a, other=other)
         ids = np.load(os.path.join(KEEP, "test_id.npy"), allow_pickle=True); assert (ids == np.arange(len(ids))).all()
         pd.DataFrame({"id": ids, "target_feature": lab.astype(int)}).to_csv(a.out, index=False)
