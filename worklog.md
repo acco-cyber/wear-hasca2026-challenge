@@ -78,6 +78,11 @@ evidence; decoder/link tweaks that only re-process our own predictions do not tr
   to the public LB; changes that reinforce the Hanbat pipeline's own beliefs gain in CV and lose on the public subset.
 - Board: Nicolas 0.93849, Mateo 0.93661, Anonym 0.93200, Santiago 0.92874, Free Chicken 0.92554, localAI 0.92368,
   Soheil 0.92154, us 0.91367 (rank 8).
+- Second batch (2 subs). LB-faithful CV: fold-honest OOF L2 links (`work/hanbat/l2oof/oof_L2.npz`, exact successor 0.56,
+  same-label 0.94; `graph_lab.py cv --links L2`) reproduce the base at 0.9045 (LB 0.9058). Under it every recipe after
+  prior+gate is flat within noise (0.9042-0.9072): the pipeline family is on a plateau. New public notebook
+  honghanhhh "LB 0.9" is the same Hanbat pipeline (0.90770). Second independent fit of the base from the public fitted
+  models (`kaggle/hanbat_run2`, 3 min GPU): our recipe on it 0.91344; probability average of both fits 0.91272.
 
 ## Earlier log (cloud sandbox session, 2026-09-22)
 

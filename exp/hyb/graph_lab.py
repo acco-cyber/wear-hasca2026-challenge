@@ -155,6 +155,8 @@ def main():
     ap.add_argument("--st", default="", help="self-training log-probs file:weight (multiplied into the graph P)")
     ap.add_argument("--save", default="", help="save final labels and P to work/hanbat/<name>_labels.npy / _P.npy")
     ap.add_argument("--xlogp", default="", help="extra expert log-probs added to the graph input: file:weight[,file:weight]")
+    ap.add_argument("--links", default="L0", choices=["L0", "L2"], help="cv: OOF link set (L2 = fold-honest, LB-faithful)")
+    ap.add_argument("--l2_links", default="", help="test: alternative L2 links npz (e.g. from the second fit)")
     ap.add_argument("--xl_cand", type=int, default=0, help="also add our top-m candidate successors (beyond succ0) as edges")
     ap.add_argument("--xl_cand_w", type=float, default=0.5); ap.add_argument("--xl_l0", type=float, default=0.0, help="test: weight of their L0 links as extra set")
     a = ap.parse_args()
@@ -163,9 +165,13 @@ def main():
         other = np.load(a.other) if a.other.endswith(".npy") else pd.read_csv(a.other).sort_values("id").target_feature.to_numpy().astype(int)
     if a.mode == "cv":
         sm = {k: v.astype(np.int64) for k, v in np.load(os.path.join(KEEP, "sim_meta.npz")).items()}
-        l0 = np.load(os.path.join(KEEP, "links_L0.npz"))
+        if a.links == "L2":                      # fold-honest OOF L2 links (work/hanbat/l2oof/oof_L2.npz), tracks the LB
+            l2o = np.load(os.path.join(HB, "l2oof", "oof_L2.npz")); assert (l2o["rows"] == np.arange(len(sm["y"]))).all()
+            succ_, score_ = l2o["succ"].astype(np.int64), l2o["score_qn"].astype(np.float32)
+        else:
+            l0 = np.load(os.path.join(KEEP, "links_L0.npz")); succ_, score_ = l0["oof_succ"].astype(np.int64), l0["oof_score"].astype(np.float32)
         dd = dict(logp=np.load(a.logp).astype(np.float32), emb=np.load(os.path.join(KEEP, "oof_emb.npy")).astype(np.float32),
-                  grp=sm["sbj"], sbj=sm["sbj"], succ=l0["oof_succ"].astype(np.int64), score=l0["oof_score"].astype(np.float32), sets=TRAIN_SETS)
+                  grp=sm["sbj"], sbj=sm["sbj"], succ=succ_, score=score_, sets=TRAIN_SETS)
         rows = np.load(os.path.join(HYB, "rows.npz")); o2t = rows["ours_to_theirs"]
         R = pickle.load(open(a.ours, "rb")); ours = np.full(len(sm["y"]), -1, np.int64)
         for s, d in R.items():
@@ -191,7 +197,7 @@ def main():
                   f"L0 same-label {np.mean(sm['y'][dd['succ'][dd['succ'] >= 0]] == sm['y'][dd['succ'] >= 0]):.3f}")
         run(dd, np.where(has, ours, 0), has, a, eval_y=sm["y"], tag=a.tag or os.path.basename(a.logp), other=other)
     else:
-        bl = np.load(os.path.join(KEEP, "blend.npz")); l2 = np.load(os.path.join(KEEP, "links_L2_test.npz"))
+        bl = np.load(os.path.join(KEEP, "blend.npz")); l2 = np.load(a.l2_links or os.path.join(KEEP, "links_L2_test.npz"))
         sbj = bl["test_sbj"].astype(np.int64)
         dd = dict(logp=np.load(a.logp).astype(np.float32), emb=np.load(os.path.join(KEEP, "test_emb.npy")).astype(np.float32),
                   grp=sbj, sbj=sbj, succ=l2["succ"].astype(np.int64), score=l2["score_qn"].astype(np.float32), sets={})

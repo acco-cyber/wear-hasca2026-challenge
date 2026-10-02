@@ -1,0 +1,20 @@
+{
+ "id": "koushikrudra/wear-hanbat-run2",
+ "title": "wear-hanbat-run2",
+ "code_file": "hanbat_run2.ipynb",
+ "language": "python",
+ "kernel_type": "notebook",
+ "is_private": true,
+ "enable_gpu": true,
+ "enable_tpu": false,
+ "enable_internet": false,
+ "dataset_sources": [
+  "jiweiliu/wear-timeline-graph-models"
+ ],
+ "competition_sources": [
+  "3rd-wear-dataset-challenge-hasca-2026"
+ ],
+ "kernel_sources": [],
+ "model_sources": [],
+ "machine_shape": "NvidiaTeslaT4"
+}
