@@ -2,15 +2,18 @@
   --prior m    : in the self-training rounds, Q <- (1-m)*Q + m*onehot(ours) (rows with our labels)
   --counts c   : Sinkhorn class-count targets per subject <- (1-c)*default(97/exercise) + c*counts(ours)
   --gate tau[:rule]: after finish, where calibrated confidence < tau [and rule top2|agree], take our label
-python graph_lab.py cv  <oof_logp_b.npy> <labels.pkl> [options]      (their OOF rows, L0 links proxy)
-python graph_lab.py test <test_logp_b.npy> <ours.csv> <out.csv> [options]   (L2 qn links)"""
+python graph_lab_l2.py cv  <oof_logp_b.npy> <labels.pkl> [options]   (their OOF rows, fold-honest OOF L2 qn links;
+                                                                      --links L0 restores the old L0 proxy)
+python graph_lab_l2.py test <test_logp_b.npy> <ours.csv> <out.csv> [options]   (L2 qn links)
+COPY of exp/hyb/graph_lab.py; only the cv-mode link set differs (+ per-fold F1 print)."""
 import os, sys, argparse, pickle
 import numpy as np, pandas as pd
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+W = r"E:\Claude code\wear"; HYB = os.path.join(W, "exp", "hyb")
+sys.path.insert(0, HYB)
 import hanbat_stack as H
 from hanbat_stack import (KEEP, HB, N_CLS, CFG, TRAIN_SETS, TEST_CFGS, macro_f1, _norm_rows, label_prop_generic, link_W,
                           smooth_emb, SubjectKNN, parse_cfg)
-W = r"E:\Claude code\wear"; HYB = os.path.join(W, "exp", "hyb")
+OOF_L2 = os.path.join(HB, "l2oof", "oof_L2.npz")
 
 
 def default_targets(sbj, sets):
@@ -107,11 +110,6 @@ def apply_gate(base, Q, ours, has, tau, rule, other=None, sbj=None):
 
 def run(dd, ours, has, a, eval_y=None, tag="", other=None):
     sets = dd["sets"]; sbj = dd["sbj"]
-    if a.xlogp:
-        x = dd["logp"].astype(np.float64)
-        for part in a.xlogp.split(","):
-            pth, w_ = part.rsplit(":", 1); x = x + float(w_) * np.load(pth).astype(np.float64)
-        dd = dict(dd); dd["logp"] = H.lsm(x).astype(np.float32)
     cover = {int(s): bool(has[sbj == s].all()) for s in np.unique(sbj)}
     targets = make_targets(sbj, sets, np.where(has, ours, 0), a.counts, cover)
     OH = None
@@ -119,9 +117,6 @@ def run(dd, ours, has, a, eval_y=None, tag="", other=None):
         OH = np.full((len(sbj), N_CLS), 1.0 / N_CLS); eps = 0.1
         OH[has] = eps / N_CLS; OH[np.flatnonzero(has), ours[has]] += 1 - eps
     P = graph_P2(dd, TEST_CFGS, targets, OH, a.prior)
-    if a.st:                                   # per-subject cross-fitted self-training log-probs (selftrain_cv.py)
-        pth, w_ = a.st.rsplit(":", 1); A = np.load(pth).astype(np.float64)
-        SA = np.exp(A - A.max(1, keepdims=True)); SA /= SA.sum(1, keepdims=True); P = _norm_rows(P * SA ** float(w_))
     base, Q = finish2(P, sbj, targets)
     lab = base
     if a.gate:
@@ -135,12 +130,15 @@ def run(dd, ours, has, a, eval_y=None, tag="", other=None):
         k_, a_, st_ = (float(x) for x in a.icm.split(","))
         lab0 = lab; lab = icm_decode(P, Q, E, sbj, lab.astype(np.int64), use_p=1.0, k=int(k_), a=a_, stick=st_)
         print(f"ICM changed {np.mean(lab != lab0):.4f}", flush=True)
-    if a.save:
-        np.save(os.path.join(HB, f"{a.save}_labels.npy"), lab); np.save(os.path.join(HB, f"{a.save}_P.npy"), P.astype(np.float32))
     if eval_y is not None:
         S = has
         print(f"{tag} prior={a.prior} counts={a.counts} gate={a.gate}: F1(all) {macro_f1(eval_y, lab):.4f} F1(S) {macro_f1(eval_y[S], lab[S]):.4f}"
               f"  [no-gate F1(S) {macro_f1(eval_y[S], base[S]):.4f}]", flush=True)
+        if dd.get("fold") is not None:
+            fo = dd["fold"]
+            print("  per fold F1(all) " + " ".join(f"{f}:{macro_f1(eval_y[fo == f], lab[fo == f]):.4f}" for f in range(5)), flush=True)
+        if a.save_lab:
+            np.save(a.save_lab, lab)
     return lab, P
 
 
@@ -152,20 +150,25 @@ def main():
     ap.add_argument("--extra_links", action="store_true", help="add our chain links (sim structs / work/test_structure.pkl)")
     ap.add_argument("--xl_w", type=float, default=1.0); ap.add_argument("--xl_b", type=float, default=-2.0)
     ap.add_argument("--icm", default="", help="k,a,stick for the kNN ICM relabelling, e.g. 5,4.0,0.1")
-    ap.add_argument("--st", default="", help="self-training log-probs file:weight (multiplied into the graph P)")
-    ap.add_argument("--save", default="", help="save final labels and P to work/hanbat/<name>_labels.npy / _P.npy")
-    ap.add_argument("--xlogp", default="", help="extra expert log-probs added to the graph input: file:weight[,file:weight]")
     ap.add_argument("--xl_cand", type=int, default=0, help="also add our top-m candidate successors (beyond succ0) as edges")
     ap.add_argument("--xl_cand_w", type=float, default=0.5); ap.add_argument("--xl_l0", type=float, default=0.0, help="test: weight of their L0 links as extra set")
+    ap.add_argument("--links", default="L2", choices=["L2", "L0"], help="cv: OOF link set for the graph (L2 = fold-honest OOF L2 qn)")
+    ap.add_argument("--save_lab", default="", help="save the final labels (.npy)")
     a = ap.parse_args()
     other = None
     if a.other:
         other = np.load(a.other) if a.other.endswith(".npy") else pd.read_csv(a.other).sort_values("id").target_feature.to_numpy().astype(int)
     if a.mode == "cv":
         sm = {k: v.astype(np.int64) for k, v in np.load(os.path.join(KEEP, "sim_meta.npz")).items()}
-        l0 = np.load(os.path.join(KEEP, "links_L0.npz"))
+        if a.links == "L2":
+            l2 = np.load(OOF_L2); assert (l2["rows"] == np.arange(len(sm["y"]))).all()
+            succ_, score_ = l2["succ"].astype(np.int64), l2["score_qn"].astype(np.float32)
+        else:
+            l0 = np.load(os.path.join(KEEP, "links_L0.npz"))
+            succ_, score_ = l0["oof_succ"].astype(np.int64), l0["oof_score"].astype(np.float32)
         dd = dict(logp=np.load(a.logp).astype(np.float32), emb=np.load(os.path.join(KEEP, "oof_emb.npy")).astype(np.float32),
-                  grp=sm["sbj"], sbj=sm["sbj"], succ=l0["oof_succ"].astype(np.int64), score=l0["oof_score"].astype(np.float32), sets=TRAIN_SETS)
+                  grp=sm["sbj"], sbj=sm["sbj"], succ=succ_, score=score_, sets=TRAIN_SETS, fold=sm["fold"])
+        print(f"cv links {a.links}: linked {np.mean(succ_ >= 0):.3f} same-label {np.mean(sm['y'][succ_[succ_ >= 0]] == sm['y'][succ_ >= 0]):.3f}")
         rows = np.load(os.path.join(HYB, "rows.npz")); o2t = rows["ours_to_theirs"]
         R = pickle.load(open(a.ours, "rb")); ours = np.full(len(sm["y"]), -1, np.int64)
         for s, d in R.items():

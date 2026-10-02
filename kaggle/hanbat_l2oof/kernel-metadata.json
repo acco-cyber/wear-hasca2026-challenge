@@ -1,0 +1,19 @@
+{
+ "id": "koushikrudra/wear-hanbat-l2oof",
+ "title": "wear-hanbat-l2oof",
+ "code_file": "wear_hanbat_l2oof.py",
+ "language": "python",
+ "kernel_type": "script",
+ "is_private": true,
+ "enable_gpu": false,
+ "enable_tpu": false,
+ "enable_internet": false,
+ "dataset_sources": [],
+ "competition_sources": [
+  "3rd-wear-dataset-challenge-hasca-2026"
+ ],
+ "kernel_sources": [
+  "koushikrudra/wear-hanbat-gpu"
+ ],
+ "model_sources": []
+}

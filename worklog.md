@@ -68,6 +68,17 @@ evidence; decoder/link tweaks that only re-process our own predictions do not tr
   One-to-one assignment links transfer, candidate lists do not; changes of ~1% of labels move the public score by 0.003.
 - Board: Mateo 0.93661, Nicolas 0.93334, localAI 0.92368, Anonym 0.92232, Soheil 0.92154, Free Chicken 0.92142, us 0.91289.
 
+## 2026-10-02 (3 submissions)
+- Per-subject cross-fitted self-training (`exp/hyb/selftrain_cv.py`): a small LightGBM per subject trained on the
+  pipeline's own pseudo-labels (5-fold over the subject's windows), multiplied into the graph output. Alone 0.859, as a
+  correction at weight 0.08: CV 0.8882 -> 0.8919, LB **0.91367**; weight 0.15: CV 0.8914, LB 0.91197.
+- Transductive tabular expert (`exp/hyb/adapt_tab.py`): the Hanbat T expert retrained on train + cross-fitted target
+  pseudo-labels; alone 0.829 OOF (plain T 0.640); as graph input 0.5 + post-graph 0.15: CV 0.8955, LB 0.90852.
+- Pattern across all days: additions of our independent evidence (our links, our labels, light self-training) transfer
+  to the public LB; changes that reinforce the Hanbat pipeline's own beliefs gain in CV and lose on the public subset.
+- Board: Nicolas 0.93849, Mateo 0.93661, Anonym 0.93200, Santiago 0.92874, Free Chicken 0.92554, localAI 0.92368,
+  Soheil 0.92154, us 0.91367 (rank 8).
+
 ## Earlier log (cloud sandbox session, 2026-09-22)
 
 ---
