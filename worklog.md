@@ -68,6 +68,20 @@ evidence; decoder/link tweaks that only re-process our own predictions do not tr
   One-to-one assignment links transfer, candidate lists do not; changes of ~1% of labels move the public score by 0.003.
 - Board: Mateo 0.93661, Nicolas 0.93334, localAI 0.92368, Anonym 0.92232, Soheil 0.92154, Free Chicken 0.92142, us 0.91289.
 
+## 2026-10-03 (3 submissions)
+- 2025-challenge test.csv (user joined the 2nd challenge; same subjects 22-25): it is ALL FOUR LIMBS of every one of our
+  12,234 seconds as non-overlapping, unaugmented 1-s tiles with shuffled ids (`exp/hyb/w25_parse.py`, `w25_match.py`:
+  85% of our tiles have an exact unique twin). Not an adjacency oracle. Ceiling study (`fuse_ceiling.py`, `fuse_lr.py`):
+  with PERFECT cross-limb grouping, 4-limb sample continuity fused with the L2 link gives 95.8% exact successors and
+  CV 0.9258 (graph) / 0.9327 (chain decoder); but 10% wrong groupings -> 0.67-0.78, and the grouping itself is
+  impossible: the four sensors are not sample-synchronised (lag wanders +-75 samples within a session), so a pair
+  classifier finds the right second 0.2-5% of the time (`exp/hyb/agents/group/`). No submission used the 2025 data.
+- Decoder ceiling with true order (L2-faithful CV, `order_decode.py --links true --per rec`): 0.946; by exact-link
+  share: 56% 0.872, 79% 0.900, 92% 0.918, 96% 0.927, 99% 0.933.
+- Submissions: gl18 = gl11 recipe + the second fit's L2 assignment links as an extra one-to-one link set **0.91478**
+  (new best); gl16 (geometric-mean base of two fits + second-fit links) 0.91316; gl19 (gl18 + our all-sessions
+  link scorer as a third set) 0.91277. Board: Anonym 0.93864, Nicolas 0.93849, Mateo 0.93661, Santiago 0.92874.
+
 ## 2026-10-02 (3 submissions)
 - Per-subject cross-fitted self-training (`exp/hyb/selftrain_cv.py`): a small LightGBM per subject trained on the
   pipeline's own pseudo-labels (5-fold over the subject's windows), multiplied into the graph output. Alone 0.859, as a

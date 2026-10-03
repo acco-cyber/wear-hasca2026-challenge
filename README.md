@@ -2,7 +2,7 @@
 
 Kaggle: https://www.kaggle.com/competitions/3rd-wear-dataset-challenge-hasca-2026 (macro-F1 over 19 classes).
 
-Public leaderboard progress: 0.71528 (2026-09-22) -> 0.88679, rank 2 (2026-09-24) -> 0.88791 (2026-09-25) -> 0.88934 (2026-09-27, rank 7) -> 0.91044 (2026-09-28, rank 5) -> 0.91289 (2026-09-29, rank 7) -> **0.91367** (2026-10-02, rank 8; leaders 0.922-0.938).
+Public leaderboard progress: 0.71528 (2026-09-22) -> 0.88679, rank 2 (2026-09-24) -> 0.88791 (2026-09-25) -> 0.88934 (2026-09-27, rank 7) -> 0.91044 (2026-09-28, rank 5) -> 0.91289 (2026-09-29, rank 7) -> 0.91367 (2026-10-02) -> **0.91478** (2026-10-03, rank 12; leaders 0.926-0.939).
 
 ## 2026-09-28: two decoder families combined
 The Hanbat team published their full pipeline as a Kaggle notebook (woominyo, "WEAR@HASCA 2026 | Timeline Reconstruction + Graph",
@@ -72,6 +72,10 @@ decode it jointly, with per-activity duration constraints.
 | 0.91289 recipe + per-subject cross-fitted self-training log-probs at 0.08 (`exp/hyb/selftrain_cv.py`, CV 0.8882 -> 0.8919) | **0.91367** |
 | same at weight 0.15 | 0.91197 |
 | 0.91289 recipe + transductive tabular expert, train + cross-fitted test pseudo-labels (`exp/hyb/adapt_tab.py`, CV 0.8955) | 0.90852 |
+| 0.91367 recipe + a second independently fitted copy's L2 assignment links as an extra one-to-one link set (`kaggle/hanbat_run2`) | **0.91478** |
+
+Ceilings measured with the leaderboard-faithful CV (fold-honest OOF L2 links): with true time order our chain decoder
+on the graph output reaches 0.946; 0.93 needs ~98% exact next-second links, the best links available reach 56%.
 
 2026-09-29 analysis (`exp/hyb/err_anatomy.py`, `exp/hyb/agents/`): on the train tiles 95.4% of activity bouts already have
 the right majority label and a bout-majority oracle scores 0.972, so the remaining errors are within-bout grouping, not

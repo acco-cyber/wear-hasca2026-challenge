@@ -157,6 +157,9 @@ def main():
     ap.add_argument("--xlogp", default="", help="extra expert log-probs added to the graph input: file:weight[,file:weight]")
     ap.add_argument("--links", default="L0", choices=["L0", "L2"], help="cv: OOF link set (L2 = fold-honest, LB-faithful)")
     ap.add_argument("--l2_links", default="", help="test: alternative L2 links npz (e.g. from the second fit)")
+    ap.add_argument("--mixtrue", type=float, default=0.0); ap.add_argument("--true_score", type=float, default=5.0)
+    ap.add_argument("--links_npz", default="", help="cv with --links L2: alternative OOF link file (succ, score_qn, rows)")
+    ap.add_argument("--xl_npz", default="", help="test: extra link sets file:weight[,file:weight] (npz with succ, score_qn)")
     ap.add_argument("--xl_cand", type=int, default=0, help="also add our top-m candidate successors (beyond succ0) as edges")
     ap.add_argument("--xl_cand_w", type=float, default=0.5); ap.add_argument("--xl_l0", type=float, default=0.0, help="test: weight of their L0 links as extra set")
     a = ap.parse_args()
@@ -166,8 +169,14 @@ def main():
     if a.mode == "cv":
         sm = {k: v.astype(np.int64) for k, v in np.load(os.path.join(KEEP, "sim_meta.npz")).items()}
         if a.links == "L2":                      # fold-honest OOF L2 links (work/hanbat/l2oof/oof_L2.npz), tracks the LB
-            l2o = np.load(os.path.join(HB, "l2oof", "oof_L2.npz")); assert (l2o["rows"] == np.arange(len(sm["y"]))).all()
+            l2o = np.load(a.links_npz or os.path.join(HB, "l2oof", "oof_L2.npz")); assert (l2o["rows"] == np.arange(len(sm["y"]))).all()
             succ_, score_ = l2o["succ"].astype(np.int64), l2o["score_qn"].astype(np.float32)
+            if a.mixtrue > 0:                    # replace a fraction of links by true successors (value of exact adjacency)
+                rng = np.random.default_rng(0); mt = rng.random(len(succ_)) < a.mixtrue; ts = l2o["true_succ"].astype(np.int64)
+                succ_ = np.where(mt, ts, succ_); score_ = np.where(mt & (ts >= 0), a.true_score, score_).astype(np.float32)
+                # keep one-to-one: a predicted link that points to a window already claimed by a true link is dropped
+                claimed = np.zeros(len(succ_), bool); claimed[ts[mt & (ts >= 0)]] = True
+                succ_[(~mt) & (succ_ >= 0) & claimed[np.maximum(succ_, 0)]] = -1
         else:
             l0 = np.load(os.path.join(KEEP, "links_L0.npz")); succ_, score_ = l0["oof_succ"].astype(np.int64), l0["oof_score"].astype(np.float32)
         dd = dict(logp=np.load(a.logp).astype(np.float32), emb=np.load(os.path.join(KEEP, "oof_emb.npy")).astype(np.float32),
@@ -218,6 +227,8 @@ def main():
             xl = [(cs[r], cc[r], a.xl_cand_w) for r in range(a.xl_cand)]
             if a.xl_l0 > 0:
                 l0 = np.load(os.path.join(KEEP, "links_L0.npz")); xl.append((l0["test_succ"].astype(np.int64), l0["test_score"].astype(np.float32), a.xl_l0))
+            for part in ([p for p in a.xl_npz.split(",") if p] if a.xl_npz else []):     # extra one-to-one link sets (npz with succ, score_qn)
+                pth, w_ = part.rsplit(":", 1); z = np.load(pth); xl.append((z["succ"].astype(np.int64), z["score_qn"].astype(np.float32), float(w_)))
             dd.update(succ2=s2, score2=c2, xl_w=a.xl_w, xl_b=a.xl_b, xlinks=xl); print(f"extra links on test: {np.mean(s2 >= 0):.3f} of rows; extra sets {len(xl)}")
         lab, P = run(dd, ours, has, a, other=other)
         ids = np.load(os.path.join(KEEP, "test_id.npy"), allow_pickle=True); assert (ids == np.arange(len(ids))).all()

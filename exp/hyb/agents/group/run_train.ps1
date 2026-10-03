@@ -1,0 +1,6 @@
+$env:PYTHONPATH = "E:\Claude code\wear\shim"
+$env:OMP_NUM_THREADS = "6"
+$d = "E:\Claude code\wear\exp\hyb\agents\group"
+python "$d\build_cache.py" *> "$d\log_cache.txt"
+python "$d\train_pair.py" sec pair_sec *> "$d\log_train_sec.txt"
+python "$d\train_pair.py" lab pair_lab *> "$d\log_train_lab.txt"
