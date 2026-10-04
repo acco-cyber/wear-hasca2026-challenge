@@ -2,7 +2,23 @@
 
 Kaggle: https://www.kaggle.com/competitions/3rd-wear-dataset-challenge-hasca-2026 (macro-F1 over 19 classes).
 
-Public leaderboard progress: 0.71528 (2026-09-22) -> 0.88679, rank 2 (2026-09-24) -> 0.88791 (2026-09-25) -> 0.88934 (2026-09-27, rank 7) -> 0.91044 (2026-09-28, rank 5) -> 0.91289 (2026-09-29, rank 7) -> 0.91367 (2026-10-02) -> **0.91478** (2026-10-03, rank 12; leaders 0.926-0.939).
+Public leaderboard progress: 0.71528 (2026-09-22) -> 0.88679, rank 2 (2026-09-24) -> 0.88791 (2026-09-25) -> 0.88934 (2026-09-27, rank 7) -> 0.91044 (2026-09-28, rank 5) -> 0.91289 (2026-09-29, rank 7) -> 0.91367 (2026-10-02) -> 0.91478 (2026-10-03) -> 0.92738 (2026-10-03, rank 7) -> **0.92880** (2026-10-04, rank 7; leaders 0.930-0.942).
+
+Note (host, discussion 743256): prizes were decided at the July 5, 2026 technical-report deadline; the leaderboard after
+that is for the Kaggle community only.
+
+## 2026-10-04: multi-fit decoding of the v4 public pipeline (`exp/v4/`, `kaggle/v4_fork/`)
+* Forks of goodpjw2008's v4 notebook with other seeds keep every decode input (`kaggle/v4_fork/patch_v4.py`); heavier
+  variants train 8 fusion + 4 IMU window seeds (or 2 transformer-over-frames seeds), four two-tower seeds and five
+  link-scorer seeds in one run (`patch_big.py`), and the "opt" variants decode with the changes below inside the notebook.
+* `exp/v4/v4_local.py` reproduces the kernel's decode exactly on CPU (OOF 0.9230, test agreement 1.0000).
+* **Per-subject whitening of the kNN video embedding** (each subject whitened with its own covariance, so training and
+  test subjects are treated alike): OOF 0.9255 -> 0.9296 on one fit, public LB 0.92758 (the notebook's training-axis
+  whitening: OOF 0.9287, LB 0.92513). Exercise identity in the count regressor: count error 7.5 -> 7.1, OOF +0.0012.
+* Late fusion of fits (`exp/v4/v4_combine.py`: geometric mean of final graph P, re-estimated counts): OOF 0.9298,
+  **LB 0.92880**. Link-level fusion across fits: `exp/v4/relink.py`.
+* Did not help: feeding fused counts back into the graph (0.9298 -> 0.9282), early (joint) fusion vs late (0.9295 vs
+  0.9298), whitening power/shrinkage, kNN temperature and Sinkhorn sharpening sweeps (all flat).
 
 ## 2026-09-28: two decoder families combined
 The Hanbat team published their full pipeline as a Kaggle notebook (woominyo, "WEAR@HASCA 2026 | Timeline Reconstruction + Graph",

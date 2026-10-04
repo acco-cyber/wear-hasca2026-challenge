@@ -82,6 +82,24 @@ evidence; decoder/link tweaks that only re-process our own predictions do not tr
   (new best); gl16 (geometric-mean base of two fits + second-fit links) 0.91316; gl19 (gl18 + our all-sessions
   link scorer as a third set) 0.91277. Board: Anonym 0.93864, Nicolas 0.93849, Mateo 0.93661, Santiago 0.92874.
 
+## 2026-10-04
+- Board at start: Anonym 0.94201, Nicolas 0.93849, Mateo 0.93661, Santiago 0.93593; us 0.92738 (rank 7). goodpjw2008
+  published v3/v4 of "Learned Links + Counts" (LB 0.92942 from their own machine; L3 links with two two-tower seeds and
+  three scorer seeds, kNN smoothing 1.5, boundary refiner, optional label cleaning / whitening).
+- Host clarified (discussion 743256): prizes were fixed at the July 5 report deadline.
+- Kaggle limits: 10 submissions/day, at most 2 concurrent batch GPU sessions.
+- `kaggle/v4_fork/`: v4 forks that keep all decode inputs; heavier "big"/"opt" variants. A review workflow found that
+  forcing ABLATION off made stage O4 raise KeyError (three ablation-only scores read unconditionally): fixed with
+  `.get()` before any fork reached O4; the two affected runs were stopped and relaunched.
+- `exp/v4/v4_local.py` reproduces the kernel decode exactly; `v4_combine.py` late fusion; `relink.py` link fusion.
+- Submissions: public v4 Kaggle run 0.92444 (OOF 0.9272; same code scored 0.92942 on the author's machine: run-to-run
+  noise); 10-03 fork with g1.5 + training-axis whitening + exercise identity 0.92513 (OOF 0.9287); same with
+  per-subject whitening 0.92758 (OOF 0.9296); late fusion of both 10-03 fits, per-subject whitened, **0.92880**
+  (OOF 0.9298); + public v4 run's Q 0.92847 (OOF 0.9304).
+- OOF error anatomy of the best fusion: null<->activity at bout edges dominates; sibling swaps bench-dips<->lunges
+  (complex), push-ups<->push-ups (complex); subjects 10 and 2 carry the unlabeled-tail sessions, subject 14 one whole-bout
+  swap.
+
 ## 2026-10-02 (3 submissions)
 - Per-subject cross-fitted self-training (`exp/hyb/selftrain_cv.py`): a small LightGBM per subject trained on the
   pipeline's own pseudo-labels (5-fold over the subject's windows), multiplied into the graph output. Alone 0.859, as a
