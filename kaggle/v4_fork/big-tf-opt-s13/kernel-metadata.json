@@ -1,0 +1,18 @@
+{
+ "id": "koushikrudra/wear-v4-big-tf-opt-s13",
+ "title": "wear-v4-big-tf-opt-s13",
+ "code_file": "v4_big_tf_opt_s13.ipynb",
+ "language": "python",
+ "kernel_type": "notebook",
+ "is_private": true,
+ "enable_gpu": true,
+ "enable_tpu": false,
+ "enable_internet": false,
+ "dataset_sources": [],
+ "competition_sources": [
+  "3rd-wear-dataset-challenge-hasca-2026"
+ ],
+ "kernel_sources": [],
+ "model_sources": [],
+ "machine_shape": "NvidiaTeslaT4"
+}

@@ -100,6 +100,18 @@ evidence; decoder/link tweaks that only re-process our own predictions do not tr
   (complex), push-ups<->push-ups (complex); subjects 10 and 2 carry the unlabeled-tail sessions, subject 14 one whole-bout
   swap.
 
+## 2026-10-04 evening / 2026-10-05
+- Heavy "opt" forks (8 fusion + 4 IMU window seeds or 6 + 2 transformer-over-frames, four two-tower seeds, five scorer
+  seeds, per-subject whitening + exercise-identity counts inside the notebook): OOF 0.9311 each after the refiner;
+  their own submission.csv files scored **0.93208** (big-pool-opt-s7) and 0.92950 (big-tf-opt-s9). Board rank 5.
+- Late fusion + refiner on CPU: s7+s9 OOF 0.9330; + two 10-03 fits OOF 0.9336, LB 0.93174; + public v4 run 0.9333;
+  weights 0.3/0.3/0.2/0.2 0.9334.
+- Research sweep (5 agents, nested OOF, baseline 0.9330): activity-transition prior in the refiner 0.9325-0.9328;
+  refiner variants (per-fit, wider window, link/vote features) 0.9321-0.9332; null-edge specialist 0.9320-0.9322;
+  fused link sets (relink.py, exact successor 0.6636 -> 0.6674) 0.9291-0.9294 per fit vs 0.9290-0.9301. None kept.
+- Majority votes of the decodes: OOF 0.9340-0.9343, but LB 0.93077 (5 sources) and 0.92969 (3 sources).
+  OOF differences below ~0.003 do not carry to the public LB; best public remains the single s7 run (0.93208).
+
 ## 2026-10-02 (3 submissions)
 - Per-subject cross-fitted self-training (`exp/hyb/selftrain_cv.py`): a small LightGBM per subject trained on the
   pipeline's own pseudo-labels (5-fold over the subject's windows), multiplied into the graph output. Alone 0.859, as a
