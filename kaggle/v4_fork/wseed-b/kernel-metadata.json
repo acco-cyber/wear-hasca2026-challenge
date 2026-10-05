@@ -1,0 +1,21 @@
+{
+ "id": "koushikrudra/wear-wseed-b",
+ "title": "wear-wseed-b",
+ "code_file": "wseed_b.ipynb",
+ "language": "python",
+ "kernel_type": "notebook",
+ "is_private": true,
+ "enable_gpu": true,
+ "enable_tpu": false,
+ "enable_internet": false,
+ "dataset_sources": [],
+ "competition_sources": [
+  "3rd-wear-dataset-challenge-hasca-2026"
+ ],
+ "kernel_sources": [
+  "koushikrudra/wear-v4-big-pool-opt-s7",
+  "koushikrudra/wear-wseed-a"
+ ],
+ "model_sources": [],
+ "machine_shape": "NvidiaTeslaT4"
+}

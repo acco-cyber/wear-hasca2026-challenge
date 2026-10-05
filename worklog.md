@@ -111,6 +111,12 @@ evidence; decoder/link tweaks that only re-process our own predictions do not tr
   fused link sets (relink.py, exact successor 0.6636 -> 0.6674) 0.9291-0.9294 per fit vs 0.9290-0.9301. None kept.
 - Majority votes of the decodes: OOF 0.9340-0.9343, but LB 0.93077 (5 sources) and 0.92969 (3 sources).
   OOF differences below ~0.003 do not carry to the public LB; best public remains the single s7 run (0.93208).
+- Short GPU jobs (`kaggle/v4_fork/patch_wseed.py`, ~16-22 min): extra fusion window seeds merged into s7's window blend
+  on Kaggle (s7's per-run outputs mounted as a kernel source), then `exp/v4/apply_wseed.py` rebuilds stage-B
+  (0.2 window + 0.5 S3 + 0.3 adapted T) and the 4-run fusion + refiner is re-run on CPU.
+  Job a (2 pool seeds): window F1 0.7264 -> 0.7267, fusion OOF 0.9336, **LB 0.93278** (best).
+  Job b (+2 transformer-over-frames seeds): window F1 -> 0.7311, fusion OOF 0.9331, LB 0.93187.
+  The window models carry only 20% of the stage-B base, so window-level gains barely reach the final labels.
 
 ## 2026-10-02 (3 submissions)
 - Per-subject cross-fitted self-training (`exp/hyb/selftrain_cv.py`): a small LightGBM per subject trained on the
