@@ -1,0 +1,22 @@
+{
+ "K7_spec": {
+  "test_changed": 0.2574791564492398,
+  "chain_agree_test": 0.5895101863892501,
+  "chain_agree_oof": 0.6571085258615981
+ },
+ "K9_spec": {
+  "test_changed": 0.25543567108059506,
+  "chain_agree_test": 0.5865467009425879,
+  "chain_agree_oof": 0.6596792731651251
+ },
+ "K7_deaug": {
+  "test_changed": 0.2689226745136505,
+  "chain_agree_test": 0.6412751677852349,
+  "chain_agree_oof": 0.6354204586821988
+ },
+ "K9_deaug": {
+  "test_changed": 0.2785679254536538,
+  "chain_agree_test": 0.6438679245283019,
+  "chain_agree_oof": 0.6339782345828295
+ }
+}

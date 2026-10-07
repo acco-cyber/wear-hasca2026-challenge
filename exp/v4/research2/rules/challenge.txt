@@ -1,0 +1,64 @@
+﻿3rd WEAR Dataset Challenge
+3rd WEAR Dataset Challenge
+Quick Links:
+WEAR Homepage
+HASCA Homepage (last year's website)
+Challenge Website
+Overview
+Goal of the Challenge
+The 3rd WEAR Dataset Challenge is a Human Activity Recognition prediction challenge based on the WEAR dataset. The challenge will be part of the HASCA Workshop at UbiComp/ ISWC 2026.
+With previous iterations of the WEAR challenge focusing solely on inertial data, this year we want to challenge the wearable community to explore how to most effectively combine egocentric cameras with inertial sensors.
+To do so, this year, we provide random 1-second sliding windows from a single inertial sensor, as well as pre-extracted, frame-wise features (VideoMAEv2) from the egocentric camera's video stream.
+More details can be found on the Kaggle Challenge website.
+The WEAR Challenge will again be hosted via Kaggle. You can find the challenge here.
+Submission of prediction results will only be done via Kaggle. By using Kaggle's public and private leaderboard we aim to provide a more transparent and fair ranking process. Challenge participants will further be able to discuss the challenge and share their solutions on the Kaggle platform.
+IMPORTANT DISCLAIMER
+To be part of the final ranking and eligible for prices, participants will be required to submit a technical report to the HASCA workshop. The paper should contain technical description of the processing pipeline, the algorithms and the results achieved using the original WEAR dataset. An example of a technical report can be found here winners of last year's challenge. Submissions must follow the HASCA format (see below for more details).
+Important Dates
+Registration open: April 13, 2026
+Challenge duration: April 13, 2026 - July 5, 2026
+HASCA-WEAR paper submission: July 5 9:00 AoE, 2026
+HASCA-WEAR review notification: July 22, 2026
+HASCA-WEAR camera ready submission: July 31, 2026
+HASCA Workshop: October 11 or 12 *tentative*, 2026 in Shanghai, China
+Final Ranking at Conference & Prizes
+We will announce winners of the challenge at the HASCA workshop. In order to be eligible for prizes and be part of the final ranking announced at the conference, participants need to submit and present their technical report at the HASCA workshop.
+🥇 1st place: €300
+🥈 2nd place: €150
+🥉 3rd place: €75
+Please note that prize amounts will be awarded either via bank transfer or an equivalent gift card/voucher, depending on logistical constraints.
+About the WEAR Dataset
+The WEAR dataset is an outdoor sports dataset for inertial- and video-based human activity recognition (HAR). The dataset comprises data from 22 participants performing a total of 18 different workout activities with untrimmed inertial (acceleration) and egocentric video data recorded at 11 different outside locations. WEAR provides a challenging prediction scenario marked by purposely introduced activity variations as well as an overall small information overlap across modalities. This challenge focuses on the inertial data only.
+Challenge Data Download
+Please visit the Kaggle challenge page to download the training and test data. The training data is provided as a directory containing the CSV files of the 22 participants. The test data is provided as a single CSV file with each row representing one of the sliding windows of the 4 new participants, which are to be predicted. For more details please refer to the Data section on Kaggle.
+Evaluation
+Evaluation of submissions will be based on the macro F1-score. The macro F1-score is the average of the F1-scores of each activity class.
+Submission Guidelines
+Submission of Final Predictions:
+Submission of the predictions will happen solely via Kaggle. All details on the submission format and final submissions can be found on Kaggle.
+The final ranking of the WEAR Dataset challenge will be announced at the HASCA workhop. Ranking of the teams, which will be eligible for prizes, will be determined based on the private leaderboard score as of the technical report submission deadline.
+When submitting their technical report, participants will need to:
+include their team name as specified on Kaggle in the technical report, and
+make sure they selected the correct final submission on Kaggle to be used for ranking (see "Submissions" tab).
+NOTE: Kaggle will automatically pick your best scoring public leaderboard solution, if you do not select anything in the "Submissions" tab. Prizes will be awarded to the three teams with the highest private leaderboard score at the time of the paper submission deadline (TBA).
+Submission of Technical Report:
+Submission of the technical report will happen via PCS (select SIGCHI / UbiComp/ISWC 2026 / HASCA). Within the submission form please select "Submission type" -> "WEAR". Your technical report should detail your solution as well as provide preliminary results you achieved on the train dataset. An example of a technical report can be found here winners of last year's challenge. Please follow the formatting guidelines of the HASCA Workshop.
+The paper must be a maximum of 6 pages in the 2-column format. References do not count to the page limit, but all texts and figures/tables must be in the first 6 pages. Submissions do not need to be anonymous. All publications will be peer reviewed together with their contribution to the topic of the workshop. The accepted papers will be published in the UbiComp/ISWC 2025 adjunct proceedings, which will be included in the ACM Digital Library.
+Challenge Rules
+You do not work in or collaborate with the WEAR dataset project (http://mariusbock.github.io/wear/)
+If you submit an entry, but are not qualified to enter the contest, this entry is voluntary. The organizers reserve the right to evaluate it for scientific purposes. If you are not qualified to submit a contest entry and still choose to submit one, under no circumstances will such entries qualify for sponsored prizes.
+To be part of the final ranking, participants will be required to publish a technical report in the proceedings of the HASCA workshop (see above for details). Publishing of the paper also requires that at least one team member is registered for the HASCA workshop.
+Submission of each team's final predictions will happen via Kaggle. Only one single submission is allowed per team. The same person cannot be in multiple teams, except if that person is a supervisor.
+The final ranking of teams eligible for prizes, will be determined based on the private leaderboard score as of the technical report submission deadline. When submitting their technical report, participants need to tell organizers their team name as specified on Kaggle, and which submission on Kaggle is going to be their submission used for ranking. If authors do not tell us specifically which solution is to be used, we will use their latest submission as of the paper submission deadline.
+Prizes will be awarded to the three teams with the highest private leaderboard score at the time of the paper submission deadline.
+Contact
+If you have any questions please use the discussion forum or contact me directly via Kaggle.
+Organizing Comittee
+Marius Bock, University of Bonn
+Federico Spurio, University of Bonn
+Prof. Dr. Juergen Gall, University of Bonn
+Prof. Dr. Kristof Van Laerhoven, University of Siegen
+Prof. Dr. Michael Moeller, University of Siegen
+License
+WEAR is offered under a
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License. You are free to use, copy, and redistribute the material for non-commercial purposes provided you give appropriate credit, provide a link to the license, and indicate if changes were made. If you remix, transform, or build upon the material, you must distribute your contributions under the same license as the original. You may not use the material for commercial purposes.

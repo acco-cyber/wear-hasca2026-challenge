@@ -1,0 +1,105 @@
+{
+ "args": {
+  "thr": "0.8",
+  "mmin": "1",
+  "cmin": 2,
+  "lam": 0.25,
+  "passes": 12,
+  "nogap": false,
+  "jobs": 2,
+  "subjects": "20,5",
+  "tag": "smoke",
+  "gmins": "2,10"
+ },
+ "summary": {
+  "baseline": {
+   "exact": 0.6713510848126233,
+   "linked": 0.9785608674223756,
+   "cross_label": 0.06320825988416016,
+   "cross_label_wrong": 0.04381767816670864,
+   "fold_exact": [
+    0.7231270358306189,
+    NaN,
+    NaN,
+    NaN,
+    0.6130047194546407
+   ]
+  },
+  "t0.8_m1.0_g2_dc1": {
+   "coverage10": 0.031542631838344014,
+   "exact": 0.6605029585798816,
+   "linked": 0.968703794972893,
+   "cross_label": 0.06690409564996184,
+   "cross_label_wrong": 0.04757059272449758,
+   "fold_exact": [
+    0.7142857142857143,
+    NaN,
+    NaN,
+    NaN,
+    0.5998951232302046
+   ],
+   "exact_in_groups10": 0.7890625,
+   "base_exact_in_groups10": 0.7890625,
+   "asm_links": 0.22276983735830458,
+   "asm_prec": 0.9081858407079646,
+   "perturbed_exact": 0.6554311073541843
+  },
+  "t0.8_m1.0_g2_dc0": {
+   "coverage10": 0.031542631838344014,
+   "exact": 0.6607495069033531,
+   "linked": 0.9694430754066042,
+   "cross_label": 0.0668530757498729,
+   "cross_label_wrong": 0.04753431621759024,
+   "fold_exact": [
+    0.7142857142857143,
+    NaN,
+    NaN,
+    NaN,
+    0.600419507079182
+   ],
+   "exact_in_groups10": 0.7890625,
+   "base_exact_in_groups10": 0.7890625,
+   "asm_links": 0.22276983735830458,
+   "asm_prec": 0.9081858407079646,
+   "perturbed_exact": 0.6556776556776558
+  },
+  "t0.8_m1.0_g10_dc1": {
+   "coverage10": 0.031542631838344014,
+   "exact": 0.6713510848126233,
+   "linked": 0.9778215869886644,
+   "cross_label": 0.06300403225806452,
+   "cross_label_wrong": 0.04359879032258065,
+   "fold_exact": [
+    0.7240577012563983,
+    NaN,
+    NaN,
+    NaN,
+    0.6119559517566859
+   ],
+   "exact_in_groups10": 0.796875,
+   "base_exact_in_groups10": 0.7890625,
+   "asm_links": 0.022178413011335635,
+   "asm_prec": 0.9,
+   "perturbed_exact": 0.6660679064525218
+  },
+  "t0.8_m1.0_g10_dc0": {
+   "coverage10": 0.031542631838344014,
+   "exact": 0.6713510848126233,
+   "linked": 0.9778215869886644,
+   "cross_label": 0.06300403225806452,
+   "cross_label_wrong": 0.04359879032258065,
+   "fold_exact": [
+    0.7240577012563983,
+    NaN,
+    NaN,
+    NaN,
+    0.6119559517566859
+   ],
+   "exact_in_groups10": 0.796875,
+   "base_exact_in_groups10": 0.7890625,
+   "asm_links": 0.022178413011335635,
+   "asm_prec": 0.9,
+   "perturbed_exact": 0.6660679064525218
+  }
+ }
+}

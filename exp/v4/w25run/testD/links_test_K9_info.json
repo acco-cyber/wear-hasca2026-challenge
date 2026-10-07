@@ -1,0 +1,24 @@
+{
+ "fit": "K9",
+ "mode": "spec",
+ "rates": [
+  1.0,
+  1.0,
+  1.0,
+  1.0
+ ],
+ "oof_source": "research2 links_lgb_a1_k9.npz",
+ "selfcheck_exact_new": 0.7401988636363637,
+ "selfcheck_exact_own": 0.6464488636363637,
+ "selfcheck_exact_sim": 0.7401988636363637,
+ "selfcheck_exact_stage1": 0.709659090909091,
+ "test_changed_share": 0.25543567108059506,
+ "same_limb_share_new": 0.27897574123989216,
+ "same_limb_share_own": 0.2752020416843896,
+ "chain_agree_new": 0.5865467009425879,
+ "chain_agree_new_n": 2334,
+ "chain_agree_own": 0.4980026631158455,
+ "chain_agree_own_n": 2253,
+ "linked_new": 0.9704103318620239,
+ "perturbed_changed": 0.15703309278591276
+}

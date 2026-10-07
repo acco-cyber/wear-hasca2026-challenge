@@ -1,0 +1,1 @@
+If you have any questions feel free to contact me via [e-mail](mailto:marius.bock@uni-siegen.de) or use the [discussion forum](https://www.kaggle.com/competitions/second-wear-dataset-challenge/discussion/) here on Kaggle.

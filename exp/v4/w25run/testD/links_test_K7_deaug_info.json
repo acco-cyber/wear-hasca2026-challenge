@@ -1,0 +1,36 @@
+{
+ "fit": "K7",
+ "mode": "deaug",
+ "rates": [
+  0.801509186351706,
+  1.0,
+  1.0,
+  1.0
+ ],
+ "oof_source": "this run's nested OOF (links_oof_K7_deaug.npz)",
+ "selfcheck_exact_new": 0.7308238636363636,
+ "selfcheck_exact_own": 0.6431818181818182,
+ "selfcheck_exact_sim": 0.7191761363636363,
+ "selfcheck_exact_stage1": 0.7068181818181818,
+ "test_changed_share": 0.2689226745136505,
+ "same_limb_share_new": 0.27556413052596257,
+ "same_limb_share_own": 0.274815003827507,
+ "chain_agree_new": 0.6412751677852349,
+ "chain_agree_new_n": 2980,
+ "chain_agree_own": 0.5546045874700445,
+ "chain_agree_own_n": 2921,
+ "linked_new": 0.9744155631845676,
+ "perturbed_changed": 0.13644643732922299,
+ "changed_by_limb": {
+  "right_arm": 0.25229658792650916,
+  "right_leg": 0.2823529411764706,
+  "left_leg": 0.2734680573663624,
+  "left_arm": 0.2674950948332243
+ },
+ "oof_changed_by_limb": {
+  "right_arm": 0.24965429822539756,
+  "right_leg": 0.25794191059677785,
+  "left_leg": 0.2634991679577667,
+  "left_arm": 0.2600059119125037
+ }
+}

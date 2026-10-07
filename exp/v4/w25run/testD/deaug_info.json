@@ -1,0 +1,42 @@
+{
+ "LA_nonexact": 748,
+ "LA_matched": 748,
+ "LA_inverse_cv_rms": 0.005868313147362177,
+ "LA_detector_on_matched_twins": 1.0,
+ "LA_detector_on_exact_twins": 0.0,
+ "LA_detector_on_ours": 0.0,
+ "RA_nonexact": 1236,
+ "RA_matched": 631,
+ "RA_fixed_pattern_fit_rms": 0.00018357605618074313,
+ "RA_flag_rate_exact_twins": 0.0005518763796909492,
+ "RA_flag_rate_matched": 0.9984152139461173,
+ "anchored": 0.9505476540787968,
+ "anchored_per_limb": {
+  "right_arm": 0.801509186351706,
+  "right_leg": 1.0,
+  "left_leg": 1.0,
+  "left_arm": 1.0
+ },
+ "aug_share_rows": {
+  "left_arm": 0.24995913029262712,
+  "right_arm": 0.19960765080922022
+ },
+ "R": [
+  [
+   0.39060871061797214,
+   -0.41195358665906373,
+   -0.8232369510827962
+  ],
+  [
+   0.8124038912495567,
+   -0.2663061546404971,
+   0.5187301316514877
+  ],
+  [
+   0.4329258050427855,
+   0.8714214103631632,
+   -0.23065119312227986
+  ]
+ ],
+ "noise_sd": 0.1002052061351508
+}

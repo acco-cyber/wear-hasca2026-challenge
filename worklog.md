@@ -118,6 +118,17 @@ evidence; decoder/link tweaks that only re-process our own predictions do not tr
   Job b (+2 transformer-over-frames seeds): window F1 -> 0.7311, fusion OOF 0.9331, LB 0.93187.
   The window models carry only 20% of the stage-B base, so window-level gains barely reach the final labels.
 
+## 2026-10-06
+- Used the 2nd (2025) challenge's test data (all four limbs of every test second; user decision). The 2025 augmentation
+  was reverse-engineered (left_arm: sign flip + fixed time warp on 25% of rows; right_arm: two fixed rotation/noise
+  patterns on 40%); all 12,234 of our tiles have an exact twin; 95% anchored after de-augmentation.
+- Per-limb chains on the 2025 rows (`exp/v4/w25run/testD`) re-score the L3 link candidates: exact next-second links
+  64% -> 71% (nested OOF, realistic simulation); audited (no index bugs).
+- Fused K7+K9 with chain links (refiner on chain links, `w25run/gateA/a3_combine.py`): OOF 0.9330 -> 0.9346, LB 0.93339;
+  + two 10-03 fits + log-count prior: OOF 0.9354, **LB 0.93541** (best, rank 6).
+- No gain: chain-context IMU expert (0.9312 vs 0.9311), global timeline assembly from chain fragments (fragments ~2
+  nodes long; 0.9324 vs 0.9327), majority votes (OOF 0.9360, LB 0.93450).
+
 ## 2026-10-02 (3 submissions)
 - Per-subject cross-fitted self-training (`exp/hyb/selftrain_cv.py`): a small LightGBM per subject trained on the
   pipeline's own pseudo-labels (5-fold over the subject's windows), multiplied into the graph output. Alone 0.859, as a

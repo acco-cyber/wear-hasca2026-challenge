@@ -1,0 +1,44 @@
+{
+ "fit": "K7",
+ "mode": "deaug",
+ "subjects": [
+  0,
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16,
+  17,
+  18,
+  19,
+  20,
+  21
+ ],
+ "as_trained": {
+  "exact": 0.709142593287351,
+  "exact_into_unanch_B": 0.6912921348314607,
+  "exact_into_unanch_B_same": 0.8883878241262683,
+  "exact_into_anch_B": 0.7101092148094065,
+  "n_unanch_same": 887,
+  "share_links_into_unanch_same": 0.013566636124493837
+ },
+ "test_like": {
+  "exact": 0.709142593287351,
+  "exact_into_unanch_B": 0.6912921348314607,
+  "exact_into_unanch_B_same": 0.8883878241262683,
+  "exact_into_anch_B": 0.7101092148094065,
+  "n_unanch_same": 887,
+  "share_links_into_unanch_same": 0.013566636124493837
+ }
+}

@@ -1,0 +1,19 @@
+{
+ "topic": {
+  "id": 694742,
+  "title": "🚨 [IMPORTANT] Please Redownload the Test Data",
+  "topicUrl": "/competitions/3rd-wear-dataset-challenge-hasca-2026/discussion/694742",
+  "postDate": "2026-04-26T18:13:29.320Z",
+  "lastCommentPostDate": "2026-04-26T18:13:29.320Z"
+ },
+ "messages": {
+  "messages": [
+   {
+    "id": 3448840,
+    "postDate": "2026-04-26T18:13:29.320Z",
+    "content": "<p>We found a bug in the video feature creation. The test data has now been fixed -- please redownload the test set and replace your existing version. Sample ordering is unchanged, so previous solutions not using video features remain valid.</p>\n<p>Sorry for the trouble, and thank you to Fran (\"Team Whatever\") for flagging this!</p>\n<p>Marius (on behalf of the organizers)</p>",
+    "rawMarkdown": "We found a bug in the video feature creation. The test data has now been fixed -- please redownload the test set and replace your existing version. Sample ordering is unchanged, so previous solutions not using video features remain valid.\n\nSorry for the trouble, and thank you to Fran (\"Team Whatever\") for flagging this!\n\nMarius (on behalf of the organizers)"
+   }
+  ]
+ }
+}

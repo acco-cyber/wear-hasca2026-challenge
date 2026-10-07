@@ -1,0 +1,2968 @@
+##### CELL 0 [markdown]
+# Aligned Video–Inertial Fusion with Temporal Pooling and Three Classification Heads
+
+This work predicts one of 19 activity classes for the 3rd WEAR Dataset Challenge. Each example is a 1-second window from a single limb, with 50 acceleration samples at 50 Hz and 15 VideoMAE frames from an egocentric camera. Training uses subjects 0–21 and testing uses subjects 22–25. The score is macro-F1, so a rare exercise counts the same as null. Windows are cut with a stride of 25 samples and labeled by majority vote, which gives 554,528 training windows. Validation is 5-fold GroupKFold by subject, so no person appears on both sides of a fold.
+
+The network has to use both sensors because they fail in different ways. A quiet limb during a stretch looks like null in the acceleration, while the camera still shows the pose. The video in these files runs at 30 features per second, so the 15 frames are taken from inside that same second rather than from a fixed frame rate. The model keeps a separate inertial head, a separate video head, and a fused head. At inference the three probability vectors are averaged.
+
+##### CELL 1 [markdown]
+#**Dataset and task**
+
+Each test row is one 1-second window from one limb. The limbs are right_arm, right_leg, left_leg, and left_arm. The inertial signal is acceleration at 50 Hz, shape 50 \times 3. The video input is 15 VideoMAE vectors of size 768. There are 19 classes: null plus 18 exercises. The score is macro-F1, so each class counts equally.
+
+Training is 24 session files from subjects 0–21, including sbj_0_2 and sbj_14_2. Test is 12,234 windows from subjects 22, 23, 24, and 25 (5,197 / 3,128 / 1,995 / 1,914). The test metadata columns used are id, sbj_id, and sensor_location. There is no timestamp. Order inside a subject and limb is id.
+
+Windows
+
+A training window is 50 samples, stride 25, so consecutive windows overlap by half a second. The label is the majority class inside those 50 samples:
+
+$$ y = \arg\max_c \sum_{t=0}^{49} \mathbf{1}[\text{label}_t = c] $$
+
+Each window is stored once per limb, so one second becomes four examples. That produces 554,528 windows. null is 220,456 of them, about 39.8%. Sensor values are clipped to [-20, 20].
+##### CELL 2 [markdown]
+Video alignment
+
+Every training file printed 30 video features per second. For a window that starts at inertial index s, the 15 frames are the centers of 15 equal bins inside that second:
+
+$$ o = s \cdot \frac{30}{50}, \quad \text{span} = 50 \cdot \frac{30}{50} = 30 $$ $$ i_k = \left\lfloor o + (k + 0.5)\cdot \frac{\text{span}}{15} \right\rfloor, \quad k = 0,\ldots,14 $$
+
+Floor is used so a bin edge at *.5 is not rounded to the next frame. Test video is already stored as (12234, 768, 15) and is transposed to (12234, 15, 768). The index formula is not used on the test set.
+
+Inertial input
+
+The network sees four channels: a_x, a_y, a_z, and the magnitude
+
+$$ a_m(t) = \sqrt{a_x(t)^2 + a_y(t)^2 + a_z(t)^2} $$
+
+Each channel is normalized with the mean and standard deviation of the training subjects of that fold. Training augmentation is a scale drawn from [0.85, 1.15] and Gaussian noise with standard deviation 0.02. Watches have a fixed orientation, so the three axes are not randomly rotated. Gravity direction is a cue.
+##### CELL 3 [code]
+
+#   1. Detect how many video features fall in one second and take
+#      15 frames uniformly from THAT second. Experiment 11 always
+#      assumed 30 fps, which mis-pairs 60 fps VideoMAE features.
+#   2. Keep mean, std, and max of the conv map instead of a global
+#      average, and append acceleration magnitude.
+#   3. Give video frames a position embedding.
+#   4. Train inertial, video, and fused heads together so a quiet
+#      limb cannot drown the camera.
+#   5. GroupNorm, balanced batches, light scale/jitter augmentation.
+#   6. Also report macro-F1 on non-overlapping windows (stride 50).
+
+import os
+import random
+import warnings
+
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from sklearn.metrics import accuracy_score, classification_report, f1_score
+from sklearn.model_selection import GroupKFold
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+
+warnings.filterwarnings("ignore")
+
+# ------------------------------------------------------------
+# Config
+# ------------------------------------------------------------
+
+BASE = os.environ.get("WEAR_BASE", "")
+TRAIN_INERTIAL_DIR = ""
+TRAIN_VIDEO_DIR = ""
+TEST_INERTIAL_PATH = ""
+TEST_VIDEO_PATH = ""
+TEST_META_PATH = ""
+SAMPLE_SUB_PATH = ""
+OUT_DIR = os.environ.get("WEAR_OUT", "/kaggle/working")
+CHECKPOINT_PREFIX = "exp12_aligned_fusion"
+
+
+def _peek_kaggle_input():
+    root = "/kaggle/input"
+    if not os.path.isdir(root):
+        return "/kaggle/input is not on this machine."
+    lines = []
+    for dirpath, dirnames, _ in os.walk(root):
+        depth = dirpath[len(root):].count(os.sep)
+        if depth > 3:
+            dirnames.clear()
+            continue
+        lines.append(dirpath)
+        if len(lines) >= 40:
+            break
+    return "Folders under /kaggle/input:\n" + "\n".join(lines)
+
+
+def resolve_base():
+    env = os.environ.get("WEAR_BASE")
+    if env and os.path.isdir(os.path.join(env, "train", "inertial_feat")):
+        return env
+    candidates = [
+        "/kaggle/input/competitions/3rd-wear-dataset-challenge-hasca-2026",
+        "/kaggle/input/3rd-wear-dataset-challenge-hasca-2026",
+    ]
+    for path in candidates:
+        if os.path.isdir(os.path.join(path, "train", "inertial_feat")):
+            return path
+    root = "/kaggle/input"
+    if os.path.isdir(root):
+        for dirpath, dirnames, _ in os.walk(root):
+            if (
+                os.path.basename(dirpath) == "inertial_feat"
+                and os.path.basename(os.path.dirname(dirpath)) == "train"
+            ):
+                return os.path.dirname(os.path.dirname(dirpath))
+            depth = dirpath[len(root):].count(os.sep)
+            if depth > 4:
+                dirnames.clear()
+    raise FileNotFoundError(
+        "Competition files were not found. In the Kaggle notebook sidebar, "
+        "open Input and add the 3rd WEAR Dataset Challenge data, then run the cell again.\n"
+        + _peek_kaggle_input()
+    )
+
+
+def configure_paths():
+    global BASE, TRAIN_INERTIAL_DIR, TRAIN_VIDEO_DIR
+    global TEST_INERTIAL_PATH, TEST_VIDEO_PATH, TEST_META_PATH, SAMPLE_SUB_PATH, OUT_DIR
+    BASE = resolve_base()
+    TRAIN_INERTIAL_DIR = os.path.join(BASE, "train", "inertial_feat")
+    TRAIN_VIDEO_DIR = os.path.join(BASE, "train", "videomae_feat")
+    TEST_INERTIAL_PATH = os.path.join(BASE, "test", "test_inertial_data.npy")
+    TEST_VIDEO_PATH = os.path.join(BASE, "test", "test_videomae_data.npy")
+    TEST_META_PATH = os.path.join(BASE, "test", "test_meta_data.csv")
+    SAMPLE_SUB_PATH = os.path.join(BASE, "sample_submission.csv")
+    OUT_DIR = os.environ.get("WEAR_OUT", "/kaggle/working")
+    print("Data root:", BASE)
+
+N_FOLDS = 5
+BATCH_SIZE = 256
+EPOCHS = 30
+LR = 1e-3
+WEIGHT_DECAY = 1e-4
+NUM_CLASSES = 19
+SEED = 42
+NUM_WORKERS = int(os.environ.get("WEAR_WORKERS", "2"))
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+INERTIAL_HZ = 50
+WINDOW_SIZE = 50
+STRIDE = 25
+VIDEO_INPUT_FRAMES = 15
+# Set this only if the printed feat/sec is wrong. None = auto.
+FORCE_FEAT_FPS = None
+
+LOCATIONS = ["right_arm", "right_leg", "left_leg", "left_arm"]
+LOCATION_MAP = {name: i for i, name in enumerate(LOCATIONS)}
+SENSOR_COLUMNS = {
+    loc: [f"{loc}_acc_x", f"{loc}_acc_y", f"{loc}_acc_z"] for loc in LOCATIONS
+}
+ALL_SENSOR_COLUMNS = [c for loc in LOCATIONS for c in SENSOR_COLUMNS[loc]]
+
+LABEL_MAP = {
+    "null": 0,
+    "jogging": 1,
+    "jogging (rotating arms)": 2,
+    "jogging (skipping)": 3,
+    "jogging (sidesteps)": 4,
+    "jogging (butt-kicks)": 5,
+    "stretching (triceps)": 6,
+    "stretching (lunging)": 7,
+    "stretching (shoulders)": 8,
+    "stretching (hamstrings)": 9,
+    "stretching (lumbar rotation)": 10,
+    "push-ups": 11,
+    "push-ups (complex)": 12,
+    "sit-ups": 13,
+    "sit-ups (complex)": 14,
+    "burpees": 15,
+    "lunges": 16,
+    "lunges (complex)": 17,
+    "bench-dips": 18,
+}
+ID_TO_LABEL = {v: k for k, v in LABEL_MAP.items()}
+FPS_CANDIDATES = (15, 16, 25, 30, 50, 60)
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+set_seed(SEED)
+
+
+# ------------------------------------------------------------
+# Video rate
+# ------------------------------------------------------------
+
+def estimate_feat_fps(n_inertial_rows, n_video_frames):
+    """How many stored video vectors cover one real second."""
+    raw = n_video_frames / max(n_inertial_rows / INERTIAL_HZ, 1e-6)
+    if FORCE_FEAT_FPS is not None:
+        return float(FORCE_FEAT_FPS), raw
+    snapped = min(FPS_CANDIDATES, key=lambda c: abs(c - raw))
+    if abs(snapped - raw) / snapped <= 0.12:
+        return float(snapped), raw
+    return float(raw), raw
+
+
+def frame_indices(start_idx, n_video, feat_fps):
+    """15 frames spread uniformly across this 1-second inertial window."""
+    origin = start_idx * feat_fps / INERTIAL_HZ
+    span = WINDOW_SIZE * feat_fps / INERTIAL_HZ
+    # Bin centers inside [origin, origin + span). Floor avoids banker-rounding
+    # of *.5, which would skip frames when there are exactly 15 of them.
+    pos = origin + (np.arange(VIDEO_INPUT_FRAMES) + 0.5) * span / VIDEO_INPUT_FRAMES
+    idx = np.floor(pos).astype(np.int64)
+    np.clip(idx, 0, max(n_video - 1, 0), out=idx)
+    return idx
+
+
+def with_magnitude(x3):
+    mag = np.linalg.norm(x3, axis=1, keepdims=True)
+    return np.concatenate([x3, mag], axis=1).astype(np.float32)
+
+
+# ------------------------------------------------------------
+# Load CSV windows
+# ------------------------------------------------------------
+
+def load_and_encode(csv_path):
+    df = pd.read_csv(csv_path, low_memory=False)
+    df["label"] = df["label"].fillna("null")
+    unknown = set(df["label"].unique()) - set(LABEL_MAP)
+    if unknown:
+        raise ValueError(f"Unknown labels in {csv_path}: {unknown}")
+    df["label_id"] = df["label"].map(LABEL_MAP).astype(np.int64)
+    for col in ALL_SENSOR_COLUMNS:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df[ALL_SENSOR_COLUMNS] = df[ALL_SENSOR_COLUMNS].replace([np.inf, -np.inf], np.nan)
+    bad = int(df[ALL_SENSOR_COLUMNS].isna().sum().sum())
+    if bad:
+        print(f"Cleaning {bad} bad sensor values in {os.path.basename(csv_path)}")
+        df[ALL_SENSOR_COLUMNS] = df[ALL_SENSOR_COLUMNS].ffill().bfill().fillna(0)
+    df[ALL_SENSOR_COLUMNS] = df[ALL_SENSOR_COLUMNS].clip(-20, 20)
+    return df
+
+
+def build_windows_for_subject(df, sbj_file, feat_fps):
+    sbj_id = int(df["sbj_id"].iloc[0])
+    labels = df["label_id"].to_numpy()
+    sensors = {
+        loc: df[SENSOR_COLUMNS[loc]].to_numpy(np.float32) for loc in LOCATIONS
+    }
+    samples = []
+    for start in range(0, len(df) - WINDOW_SIZE + 1, STRIDE):
+        window_labels = labels[start : start + WINDOW_SIZE]
+        label = int(np.argmax(np.bincount(window_labels, minlength=NUM_CLASSES)))
+        for location in LOCATIONS:
+            samples.append(
+                {
+                    "x": sensors[location][start : start + WINDOW_SIZE],
+                    "y": label,
+                    "location": location,
+                    "sbj_id": sbj_id,
+                    "sbj_file": sbj_file,
+                    "start_idx": start,
+                    "feat_fps": feat_fps,
+                }
+            )
+    return samples
+
+
+def build_dataset(train_dir):
+    samples = []
+    csv_files = sorted(f for f in os.listdir(train_dir) if f.endswith(".csv"))
+    print(f"\nTraining CSV files: {len(csv_files)}")
+    print("-" * 70)
+    for filename in csv_files:
+        df = load_and_encode(os.path.join(train_dir, filename))
+        sbj_file = filename.replace(".csv", "")
+        video_path = os.path.join(TRAIN_VIDEO_DIR, sbj_file + ".npy")
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(video_path)
+        n_video = np.load(video_path, mmap_mode="r").shape[0]
+        feat_fps, raw_fps = estimate_feat_fps(len(df), n_video)
+        subject_samples = build_windows_for_subject(df, sbj_file, feat_fps)
+        samples.extend(subject_samples)
+        print(
+            f"{filename:20s} rows={len(df):7d} video={n_video:7d} "
+            f"feat/sec={raw_fps:6.2f} -> {feat_fps:g}  "
+            f"samples={len(subject_samples):7d}"
+        )
+    print("-" * 70)
+    print("Total training samples:", len(samples))
+    print("Unique subjects:", len({s["sbj_id"] for s in samples}))
+    return samples
+
+
+# ------------------------------------------------------------
+# Dataset
+# ------------------------------------------------------------
+
+class MultimodalWEARDataset(Dataset):
+    def __init__(self, samples, mean, std, augment=False):
+        self.samples = samples
+        self.mean = mean
+        self.std = std
+        self.augment = augment
+        self._video_cache = {}
+
+    def __len__(self):
+        return len(self.samples)
+
+    def _video(self, sbj_file):
+        if sbj_file not in self._video_cache:
+            path = os.path.join(TRAIN_VIDEO_DIR, sbj_file + ".npy")
+            self._video_cache[sbj_file] = np.load(path, mmap_mode="r")
+        return self._video_cache[sbj_file]
+
+    def __getitem__(self, index):
+        sample = self.samples[index]
+        x = sample["x"].copy()
+        if self.augment:
+            x *= np.float32(np.random.uniform(0.85, 1.15))
+            x += np.random.normal(0, 0.02, x.shape).astype(np.float32)
+        x = with_magnitude(x)
+        x = (x - self.mean) / self.std
+        inertial = torch.from_numpy(np.ascontiguousarray(x.T))
+
+        video_array = self._video(sample["sbj_file"])
+        idx = frame_indices(sample["start_idx"], video_array.shape[0], sample["feat_fps"])
+        clip = np.asarray(video_array[idx], dtype=np.float32)
+        if clip.shape != (VIDEO_INPUT_FRAMES, 768):
+            raise RuntimeError(
+                f"Video clip shape {clip.shape} for {sample['sbj_file']} "
+                f"start={sample['start_idx']} fps={sample['feat_fps']}"
+            )
+        video = torch.from_numpy(np.ascontiguousarray(clip))
+        y = torch.tensor(sample["y"], dtype=torch.long)
+        location = torch.tensor(LOCATION_MAP[sample["location"]], dtype=torch.long)
+        return inertial, video, y, location
+
+
+def get_normalization(samples):
+    total = 0
+    sum_ = np.zeros(4, dtype=np.float64)
+    sumsq = np.zeros(4, dtype=np.float64)
+    for sample in samples:
+        x = with_magnitude(sample["x"]).astype(np.float64)
+        sum_ += x.sum(axis=0)
+        sumsq += np.square(x).sum(axis=0)
+        total += x.shape[0]
+    mean = sum_ / total
+    var = np.maximum(sumsq / total - np.square(mean), 1e-8)
+    return mean.astype(np.float32), np.sqrt(var).astype(np.float32)
+
+
+def make_sampler(samples):
+    labels = np.array([s["y"] for s in samples], dtype=np.int64)
+    counts = np.bincount(labels, minlength=NUM_CLASSES).astype(np.float64)
+    weights = 1.0 / np.maximum(counts[labels], 1.0)
+    return WeightedRandomSampler(
+        torch.as_tensor(weights, dtype=torch.double),
+        num_samples=len(weights),
+        replacement=True,
+    )
+
+
+# ------------------------------------------------------------
+# Model
+# ------------------------------------------------------------
+
+class ConvBlock(nn.Module):
+    def __init__(self, channels_in, channels_out, stride):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv1d(channels_in, channels_out, 5, stride=stride, padding=2, bias=False),
+            nn.GroupNorm(8, channels_out),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(channels_out, channels_out, 5, padding=2, bias=False),
+            nn.GroupNorm(8, channels_out),
+        )
+        if channels_in == channels_out and stride == 1:
+            self.skip = nn.Identity()
+        else:
+            self.skip = nn.Conv1d(channels_in, channels_out, 1, stride=stride, bias=False)
+
+    def forward(self, x):
+        return F.relu(self.net(x) + self.skip(x), inplace=True)
+
+
+class AlignedFusionWEAR(nn.Module):
+    def __init__(self, num_classes=NUM_CLASSES):
+        super().__init__()
+        self.stem = nn.Sequential(
+            nn.Conv1d(4, 32, 7, padding=3, bias=False),
+            nn.GroupNorm(8, 32),
+            nn.ReLU(inplace=True),
+        )
+        self.block1 = ConvBlock(32, 32, stride=1)
+        self.block2 = ConvBlock(32, 64, stride=2)
+        self.block3 = ConvBlock(64, 128, stride=2)
+
+        video_dim = 192
+        self.video_proj = nn.Sequential(
+            nn.Linear(768, video_dim),
+            nn.LayerNorm(video_dim),
+            nn.GELU(),
+            nn.Dropout(0.1),
+        )
+        self.video_pos = nn.Parameter(torch.zeros(1, VIDEO_INPUT_FRAMES, video_dim))
+        nn.init.trunc_normal_(self.video_pos, std=0.02)
+        layer = nn.TransformerEncoderLayer(
+            d_model=video_dim,
+            nhead=4,
+            dim_feedforward=384,
+            dropout=0.1,
+            batch_first=True,
+            activation="gelu",
+            norm_first=True,
+        )
+        self.video_encoder = nn.TransformerEncoder(layer, num_layers=2)
+
+        self.query = nn.Linear(384, video_dim)
+        self.key = nn.Linear(video_dim, video_dim)
+        self.value = nn.Linear(video_dim, video_dim)
+        self.attn_scale = video_dim ** -0.5
+        self.location_embedding = nn.Embedding(4, 16)
+
+        self.fusion = nn.Sequential(
+            nn.Linear(384 + video_dim + 16, 256),
+            nn.LayerNorm(256),
+            nn.GELU(),
+            nn.Dropout(0.3),
+            nn.Linear(256, 128),
+            nn.GELU(),
+            nn.Dropout(0.2),
+        )
+        self.head_f = nn.Linear(128, num_classes)
+        self.head_i = nn.Linear(384, num_classes)
+        self.head_v = nn.Linear(video_dim, num_classes)
+
+    def encode(self, inertial, video, location):
+        h = self.block3(self.block2(self.block1(self.stem(inertial))))
+        inertial_feature = torch.cat([h.mean(2), h.std(2), h.amax(2)], dim=1)
+
+        tokens = self.video_encoder(self.video_proj(video) + self.video_pos)
+        video_feature = tokens.mean(dim=1)
+
+        query = self.query(inertial_feature).unsqueeze(1)
+        key = self.key(tokens)
+        value = self.value(tokens)
+        weights = torch.softmax(torch.matmul(query, key.transpose(1, 2)) * self.attn_scale, dim=-1)
+        attended = torch.matmul(weights, value).squeeze(1)
+
+        loc = self.location_embedding(location)
+        fused = self.fusion(torch.cat([inertial_feature, attended, loc], dim=1))
+        return fused, inertial_feature, video_feature
+
+    def forward(self, inertial, video, location):
+        fused, inertial_feature, video_feature = self.encode(inertial, video, location)
+        return (
+            self.head_f(fused),
+            self.head_i(inertial_feature),
+            self.head_v(video_feature),
+        )
+
+
+def blend_logits(logits_f, logits_i, logits_v):
+    probs = (
+        torch.softmax(logits_f, dim=1)
+        + torch.softmax(logits_i, dim=1)
+        + torch.softmax(logits_v, dim=1)
+    ) / 3.0
+    return probs
+
+
+# ------------------------------------------------------------
+# Train / eval
+# ------------------------------------------------------------
+
+def run_epoch(model, loader, optimizer=None):
+    training = optimizer is not None
+    model.train(training)
+    total_loss = 0.0
+    pred_chunks = []
+    true_chunks = []
+    pred_i_chunks = []
+    pred_v_chunks = []
+    loss_fn = nn.CrossEntropyLoss()
+
+    for inertial, video, y, location in loader:
+        inertial = inertial.to(DEVICE, non_blocking=True)
+        video = video.to(DEVICE, non_blocking=True)
+        y = y.to(DEVICE, non_blocking=True)
+        location = location.to(DEVICE, non_blocking=True)
+
+        with torch.set_grad_enabled(training):
+            logits_f, logits_i, logits_v = model(inertial, video, location)
+            loss = (
+                loss_fn(logits_f, y)
+                + 0.5 * loss_fn(logits_i, y)
+                + 0.5 * loss_fn(logits_v, y)
+            )
+            if training:
+                optimizer.zero_grad(set_to_none=True)
+                loss.backward()
+                nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
+
+        total_loss += loss.item() * inertial.size(0)
+        probs = blend_logits(logits_f, logits_i, logits_v)
+        pred_chunks.append(probs.argmax(1).detach().cpu().numpy())
+        pred_i_chunks.append(logits_i.argmax(1).detach().cpu().numpy())
+        pred_v_chunks.append(logits_v.argmax(1).detach().cpu().numpy())
+        true_chunks.append(y.detach().cpu().numpy())
+
+    targets = np.concatenate(true_chunks)
+    predictions = np.concatenate(pred_chunks)
+    return {
+        "loss": total_loss / max(len(targets), 1),
+        "acc": accuracy_score(targets, predictions),
+        "f1": f1_score(targets, predictions, average="macro", zero_division=0),
+        "f1_i": f1_score(
+            targets, np.concatenate(pred_i_chunks), average="macro", zero_division=0
+        ),
+        "f1_v": f1_score(
+            targets, np.concatenate(pred_v_chunks), average="macro", zero_division=0
+        ),
+    }
+
+
+def make_loader(dataset, shuffle=False, sampler=None, drop_last=False):
+    return DataLoader(
+        dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=shuffle,
+        sampler=sampler,
+        num_workers=NUM_WORKERS,
+        pin_memory=DEVICE.type == "cuda",
+        drop_last=drop_last,
+        persistent_workers=NUM_WORKERS > 0,
+    )
+
+
+def train_one_fold(train_samples, val_samples, fold):
+    print(f"\n{'=' * 70}\nFOLD {fold}/{N_FOLDS}\n{'=' * 70}")
+    set_seed(SEED + fold)
+    mean, std = get_normalization(train_samples)
+    train_ds = MultimodalWEARDataset(train_samples, mean, std, augment=True)
+    val_ds = MultimodalWEARDataset(val_samples, mean, std, augment=False)
+    train_loader = make_loader(
+        train_ds, sampler=make_sampler(train_samples), drop_last=True
+    )
+    val_loader = make_loader(val_ds)
+
+    model = AlignedFusionWEAR().to(DEVICE)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
+    best_f1 = -1.0
+    best_state = None
+    history = []
+
+    for epoch in range(EPOCHS):
+        train_m = run_epoch(model, train_loader, optimizer)
+        val_m = run_epoch(model, val_loader)
+        scheduler.step()
+        history.append(
+            {
+                "epoch": epoch + 1,
+                "train_macro_f1": train_m["f1"],
+                "train_f1_inertial": train_m["f1_i"],
+                "train_f1_video": train_m["f1_v"],
+                "val_macro_f1": val_m["f1"],
+                "val_f1_inertial": val_m["f1_i"],
+                "val_f1_video": val_m["f1_v"],
+                "val_accuracy": val_m["acc"],
+                "val_loss": val_m["loss"],
+            }
+        )
+        print(
+            f"Epoch {epoch + 1:02d}/{EPOCHS} | "
+            f"Train F1 {train_m['f1']:.4f} | "
+            f"Val F1 {val_m['f1']:.4f} | "
+            f"Val inertial {val_m['f1_i']:.4f} | "
+            f"Val video {val_m['f1_v']:.4f} | "
+            f"Val acc {val_m['acc']:.4f}"
+        )
+        if val_m["f1"] > best_f1:
+            best_f1 = val_m["f1"]
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+
+    model.load_state_dict(best_state)
+    ckpt_path = os.path.join(OUT_DIR, f"{CHECKPOINT_PREFIX}_fold{fold}.pt")
+    torch.save(
+        {
+            "model_state_dict": model.state_dict(),
+            "mean": mean,
+            "std": std,
+            "best_f1": best_f1,
+            "fold": fold,
+        },
+        ckpt_path,
+    )
+    pd.DataFrame(history).to_csv(
+        os.path.join(OUT_DIR, f"{CHECKPOINT_PREFIX}_fold{fold}_history.csv"),
+        index=False,
+    )
+    print(f"Fold {fold} best blend Macro-F1: {best_f1:.4f}")
+    return model, (mean, std), best_f1
+
+
+# ------------------------------------------------------------
+# Test
+# ------------------------------------------------------------
+
+def prepare_test_arrays():
+    inertial = np.load(TEST_INERTIAL_PATH).astype(np.float32)
+    video = np.load(TEST_VIDEO_PATH)
+    meta = pd.read_csv(TEST_META_PATH)
+    print("Test inertial original:", inertial.shape)
+    print("Test video original:", video.shape)
+    print("Test metadata:", meta.shape)
+
+    if inertial.ndim == 3 and inertial.shape[1:] == (3, 50):
+        inertial = np.transpose(inertial, (0, 2, 1))
+    if inertial.ndim != 3 or inertial.shape[1:] != (50, 3):
+        raise ValueError(f"Unexpected test inertial shape {inertial.shape}")
+
+    if video.ndim != 3:
+        raise ValueError(f"Unexpected test video shape {video.shape}")
+    if video.shape[1:] == (768, VIDEO_INPUT_FRAMES):
+        print("Transposing test video [B,768,15] -> [B,15,768]")
+        video = np.transpose(video, (0, 2, 1))
+    if video.shape[1:] != (VIDEO_INPUT_FRAMES, 768):
+        raise ValueError(f"Unexpected test video shape {video.shape}")
+    return inertial, video.astype(np.float32), meta
+
+
+def location_from_meta(meta, index):
+    for column in (
+        "sensor_location",
+        "inertial_sensor_location",
+        "location",
+        "limb",
+    ):
+        if column in meta.columns:
+            return meta.iloc[index][column]
+    raise KeyError(f"No sensor location column in {list(meta.columns)}")
+
+
+class TestDataset(Dataset):
+    def __init__(self, inertial, video, meta, mean, std):
+        self.inertial = inertial
+        self.video = video
+        self.meta = meta.reset_index(drop=True)
+        self.mean = mean
+        self.std = std
+
+    def __len__(self):
+        return len(self.inertial)
+
+    def __getitem__(self, index):
+        x = with_magnitude(self.inertial[index])
+        x = (x - self.mean) / self.std
+        inertial = torch.from_numpy(np.ascontiguousarray(x.T))
+        video = torch.from_numpy(np.ascontiguousarray(self.video[index]))
+        location = torch.tensor(
+            LOCATION_MAP[location_from_meta(self.meta, index)], dtype=torch.long
+        )
+        return inertial, video, location
+
+
+def main():
+    print("=" * 70)
+    print("WEAR DATASET — EXPERIMENT 12")
+    print("ALIGNED VIDEO + TEMPORAL POOLING + 3 HEADS")
+    print("=" * 70)
+    print("Device:", DEVICE)
+    if torch.cuda.is_available():
+        print("GPU:", torch.cuda.get_device_name(0))
+    else:
+        print("No GPU visible. In Kaggle: Settings → Accelerator → GPU, then Run All again.")
+
+    configure_paths()
+    os.makedirs(OUT_DIR, exist_ok=True)
+    if not os.path.isdir(TRAIN_INERTIAL_DIR):
+        raise FileNotFoundError(f"Training dir not found: {TRAIN_INERTIAL_DIR}")
+
+    samples = build_dataset(TRAIN_INERTIAL_DIR)
+    groups = np.array([s["sbj_id"] for s in samples])
+    y_all = np.array([s["y"] for s in samples])
+    starts = np.array([s["start_idx"] for s in samples])
+
+    print("\nClass counts (4 limbs x overlapping windows):")
+    counts = np.bincount(y_all, minlength=NUM_CLASSES)
+    for i, count in enumerate(counts):
+        print(f"  {i:2d} {ID_TO_LABEL[i]:32s} {count:8d}")
+
+    gkf = GroupKFold(n_splits=N_FOLDS)
+    fold_scores = []
+    oof_pred = np.zeros(len(samples), dtype=np.int64)
+
+    for fold, (train_idx, val_idx) in enumerate(gkf.split(samples, y_all, groups), start=1):
+        train_samples = [samples[i] for i in train_idx]
+        val_samples = [samples[i] for i in val_idx]
+        ckpt_path = os.path.join(OUT_DIR, f"{CHECKPOINT_PREFIX}_fold{fold}.pt")
+        if os.path.exists(ckpt_path):
+            print(f"Fold {fold} checkpoint already saved, loading {ckpt_path}")
+            checkpoint = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
+            model = AlignedFusionWEAR().to(DEVICE)
+            model.load_state_dict(checkpoint["model_state_dict"])
+            mean, std = checkpoint["mean"], checkpoint["std"]
+            best_f1 = float(checkpoint["best_f1"])
+        else:
+            model, (mean, std), best_f1 = train_one_fold(train_samples, val_samples, fold)
+        fold_scores.append(best_f1)
+
+        val_ds = MultimodalWEARDataset(val_samples, mean, std, augment=False)
+        val_loader = make_loader(val_ds)
+        probs = []
+        model.eval()
+        with torch.no_grad():
+            for inertial, video, y, location in val_loader:
+                inertial = inertial.to(DEVICE, non_blocking=True)
+                video = video.to(DEVICE, non_blocking=True)
+                location = location.to(DEVICE, non_blocking=True)
+                probs.append(
+                    blend_logits(*model(inertial, video, location)).cpu().numpy()
+                )
+        oof_pred[val_idx] = np.concatenate(probs, axis=0).argmax(1)
+        print(f"OOF predictions stored for fold {fold}")
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    mean_cv = float(np.mean(fold_scores))
+    std_cv = float(np.std(fold_scores))
+    oof_f1 = f1_score(y_all, oof_pred, average="macro", zero_division=0)
+    oof_acc = accuracy_score(y_all, oof_pred)
+    nonoverlap = starts % WINDOW_SIZE == 0
+    nonoverlap_f1 = f1_score(
+        y_all[nonoverlap], oof_pred[nonoverlap], average="macro", zero_division=0
+    )
+
+    print(f"\n{'=' * 70}\nEXP12 RESULTS\n{'=' * 70}")
+    print("Fold scores:", [round(x, 4) for x in fold_scores])
+    print(f"Mean CV Macro-F1 : {mean_cv:.4f}")
+    print(f"Std CV Macro-F1  : {std_cv:.4f}")
+    print(f"OOF Macro-F1     : {oof_f1:.4f}")
+    print(f"OOF Accuracy     : {oof_acc:.4f}")
+    print(f"Non-overlap OOF Macro-F1 (stride 50): {nonoverlap_f1:.4f}")
+    print("\nOOF PER-CLASS REPORT")
+    print(
+        classification_report(
+            y_all,
+            oof_pred,
+            labels=np.arange(NUM_CLASSES),
+            target_names=[ID_TO_LABEL[i] for i in range(NUM_CLASSES)],
+            digits=4,
+            zero_division=0,
+        )
+    )
+
+    np.save(os.path.join(OUT_DIR, "exp12_oof_predictions.npy"), oof_pred)
+    np.save(os.path.join(OUT_DIR, "exp12_oof_targets.npy"), y_all)
+    pd.DataFrame({"fold": np.arange(1, N_FOLDS + 1), "macro_f1": fold_scores}).to_csv(
+        os.path.join(OUT_DIR, "exp12_fold_scores.csv"), index=False
+    )
+    pd.DataFrame(
+        {
+            "metric": [
+                "Mean CV Macro-F1",
+                "Std CV Macro-F1",
+                "OOF Macro-F1",
+                "OOF Accuracy",
+                "Non-overlap OOF Macro-F1",
+            ],
+            "value": [mean_cv, std_cv, oof_f1, oof_acc, nonoverlap_f1],
+        }
+    ).to_csv(os.path.join(OUT_DIR, "exp12_results.csv"), index=False)
+
+    print(f"\n{'=' * 70}\nTEST ENSEMBLE\n{'=' * 70}")
+    test_inertial, test_video, test_meta = prepare_test_arrays()
+    fold_probs = []
+    for fold in range(1, N_FOLDS + 1):
+        ckpt_path = os.path.join(OUT_DIR, f"{CHECKPOINT_PREFIX}_fold{fold}.pt")
+        checkpoint = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
+        model = AlignedFusionWEAR().to(DEVICE)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        model.eval()
+        loader = make_loader(
+            TestDataset(
+                test_inertial,
+                test_video,
+                test_meta,
+                checkpoint["mean"],
+                checkpoint["std"],
+            )
+        )
+        chunks = []
+        with torch.no_grad():
+            for inertial, video, location in loader:
+                inertial = inertial.to(DEVICE, non_blocking=True)
+                video = video.to(DEVICE, non_blocking=True)
+                location = location.to(DEVICE, non_blocking=True)
+                chunks.append(
+                    blend_logits(*model(inertial, video, location)).cpu().numpy()
+                )
+        fold_probs.append(np.concatenate(chunks, axis=0))
+        print(f"Fold {fold} probs:", fold_probs[-1].shape)
+        del model
+
+    ensemble = np.mean(np.stack(fold_probs, axis=0), axis=0)
+    predictions = ensemble.argmax(axis=1)
+    sample_submission = pd.read_csv(SAMPLE_SUB_PATH)
+    id_column = sample_submission.columns[0]
+    target_column = sample_submission.columns[1]
+    id_source = "id" if "id" in test_meta.columns else test_meta.columns[0]
+    submission = (
+        pd.DataFrame(
+            {id_column: test_meta[id_source].values, target_column: predictions}
+        )
+        .sort_values(id_column)
+        .reset_index(drop=True)
+    )
+    submission_path = os.path.join(OUT_DIR, "exp12_submission.csv")
+    submission.to_csv(submission_path, index=False)
+    submission.to_csv(os.path.join(OUT_DIR, "submission.csv"), index=False)
+
+    counts = np.bincount(predictions, minlength=NUM_CLASSES)
+    print("\nTEST PREDICTION DISTRIBUTION")
+    print(
+        pd.DataFrame(
+            {
+                "class_id": np.arange(NUM_CLASSES),
+                "class_name": [ID_TO_LABEL[i] for i in range(NUM_CLASSES)],
+                "count": counts,
+            }
+        ).to_string(index=False)
+    )
+    print("\nSubmission:", submission_path, submission.shape)
+    print(f"OOF Macro-F1: {oof_f1:.4f}")
+    print(f"Non-overlap Macro-F1: {nonoverlap_f1:.4f}")
+    print(f"Mean CV Macro-F1: {mean_cv:.4f}")
+
+
+def find_exp12_checkpoints():
+    needed = [f"{CHECKPOINT_PREFIX}_fold{fold}.pt" for fold in range(1, N_FOLDS + 1)]
+    roots = [
+        "/kaggle/input/datasets/swathiha/fusion-folds",
+        "/kaggle/input/fusion-folds",
+        OUT_DIR,
+        "/kaggle/working",
+    ]
+    if os.path.isdir("/kaggle/input"):
+        for dirpath, dirnames, filenames in os.walk("/kaggle/input"):
+            if all(name in filenames for name in needed):
+                roots.append(dirpath)
+            if dirpath[len("/kaggle/input"):].count(os.sep) > 5:
+                dirnames.clear()
+    for root in roots:
+        if root and all(os.path.exists(os.path.join(root, name)) for name in needed):
+            return root
+    raise FileNotFoundError(
+        "Missing exp12_aligned_fusion_fold1.pt through fold5.pt. "
+        "Add the experiment 12 notebook output under Input, or run this in the same session that trained them."
+    )
+
+
+def collect_probabilities(model, loader, has_label):
+    chunks = []
+    model.eval()
+    with torch.no_grad():
+        for batch in loader:
+            if has_label:
+                inertial, video, _y, location = batch
+            else:
+                inertial, video, location = batch
+            inertial = inertial.to(DEVICE, non_blocking=True)
+            video = video.to(DEVICE, non_blocking=True)
+            location = location.to(DEVICE, non_blocking=True)
+            chunks.append(blend_logits(*model(inertial, video, location)).cpu().numpy())
+    return np.concatenate(chunks, axis=0)
+
+
+def penalize_null(probs, penalty):
+    """Subtract `penalty` from the null log-probability. Larger penalty, fewer nulls."""
+    log_p = np.log(np.clip(probs, 1e-8, 1.0))
+    log_p = log_p.copy()
+    log_p[:, 0] -= penalty
+    log_p -= log_p.max(axis=1, keepdims=True)
+    exp = np.exp(log_p)
+    return exp / exp.sum(axis=1, keepdims=True)
+
+
+def calibrate_null():
+    """Reuse experiment 12 checkpoints. Lower null only while macro-F1 rises."""
+    print("=" * 70)
+    print("EXP12 — REDUCE NULL PREDICTIONS")
+    print("=" * 70)
+    print("Device:", DEVICE)
+    configure_paths()
+    os.makedirs(OUT_DIR, exist_ok=True)
+    ckpt_root = find_exp12_checkpoints()
+    print("Checkpoints:", ckpt_root)
+
+    samples = build_dataset(TRAIN_INERTIAL_DIR)
+    groups = np.array([s["sbj_id"] for s in samples])
+    y_all = np.array([s["y"] for s in samples])
+    oof = np.zeros((len(samples), NUM_CLASSES), dtype=np.float32)
+    gkf = GroupKFold(n_splits=N_FOLDS)
+
+    for fold, (_train_idx, val_idx) in enumerate(gkf.split(samples, y_all, groups), start=1):
+        checkpoint = torch.load(
+            os.path.join(ckpt_root, f"{CHECKPOINT_PREFIX}_fold{fold}.pt"),
+            map_location=DEVICE,
+            weights_only=False,
+        )
+        model = AlignedFusionWEAR().to(DEVICE)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        val_samples = [samples[i] for i in val_idx]
+        loader = make_loader(
+            MultimodalWEARDataset(val_samples, checkpoint["mean"], checkpoint["std"], augment=False)
+        )
+        oof[val_idx] = collect_probabilities(model, loader, has_label=True)
+        print(f"Fold {fold} OOF probabilities stored")
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    base_pred = oof.argmax(1)
+    base_f1 = f1_score(y_all, base_pred, average="macro", zero_division=0)
+    print(f"\nBaseline OOF Macro-F1: {base_f1:.4f}")
+    print(f"Baseline null predictions: {(base_pred == 0).mean():.3f}")
+
+    print("\npenalty   macro_f1   null_share   null_recall   triceps_recall   shoulders_recall")
+    best_penalty = 0.0
+    best_f1 = base_f1
+    for penalty in np.round(np.linspace(0.0, 1.5, 16), 3):
+        pred = penalize_null(oof, penalty).argmax(1)
+        score = f1_score(y_all, pred, average="macro", zero_division=0)
+        null_share = float((pred == 0).mean())
+        null_recall = float(((pred == 0) & (y_all == 0)).sum() / max((y_all == 0).sum(), 1))
+        tri = float(((pred == 6) & (y_all == 6)).sum() / max((y_all == 6).sum(), 1))
+        sho = float(((pred == 8) & (y_all == 8)).sum() / max((y_all == 8).sum(), 1))
+        print(
+            f"{penalty:7.2f}   {score:8.4f}   {null_share:9.3f}   "
+            f"{null_recall:10.3f}   {tri:14.3f}   {sho:16.3f}"
+        )
+        if score > best_f1 + 1e-5:
+            best_f1 = score
+            best_penalty = float(penalty)
+
+    print(f"\nChosen null penalty: {best_penalty:.2f}")
+    print(f"OOF Macro-F1: {base_f1:.4f} -> {best_f1:.4f}")
+    chosen = penalize_null(oof, best_penalty).argmax(1)
+    print(
+        classification_report(
+            y_all,
+            chosen,
+            labels=np.arange(NUM_CLASSES),
+            target_names=[ID_TO_LABEL[i] for i in range(NUM_CLASSES)],
+            digits=4,
+            zero_division=0,
+        )
+    )
+    np.save(os.path.join(OUT_DIR, "exp12_null_penalty.npy"), np.array([best_penalty]))
+
+    print(f"\n{'=' * 70}\nTEST WITH NULL PENALTY\n{'=' * 70}")
+    test_inertial, test_video, test_meta = prepare_test_arrays()
+    fold_probs = []
+    for fold in range(1, N_FOLDS + 1):
+        checkpoint = torch.load(
+            os.path.join(ckpt_root, f"{CHECKPOINT_PREFIX}_fold{fold}.pt"),
+            map_location=DEVICE,
+            weights_only=False,
+        )
+        model = AlignedFusionWEAR().to(DEVICE)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        loader = make_loader(
+            TestDataset(test_inertial, test_video, test_meta, checkpoint["mean"], checkpoint["std"])
+        )
+        fold_probs.append(collect_probabilities(model, loader, has_label=False))
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    ensemble = np.mean(np.stack(fold_probs, axis=0), axis=0)
+    before = ensemble.argmax(1)
+    after_probs = penalize_null(ensemble, best_penalty)
+    predictions = after_probs.argmax(1)
+    print(f"Test null predictions: {(before == 0).sum()} -> {(predictions == 0).sum()} of {len(predictions)}")
+
+    sample_submission = pd.read_csv(SAMPLE_SUB_PATH)
+    id_column = sample_submission.columns[0]
+    target_column = sample_submission.columns[1]
+    id_source = "id" if "id" in test_meta.columns else test_meta.columns[0]
+    submission = (
+        pd.DataFrame({id_column: test_meta[id_source].values, target_column: predictions})
+        .sort_values(id_column)
+        .reset_index(drop=True)
+    )
+    path = os.path.join(OUT_DIR, "exp12_null_submission.csv")
+    submission.to_csv(path, index=False)
+    submission.to_csv(os.path.join(OUT_DIR, "submission.csv"), index=False)
+    print("Submission:", path, submission.shape)
+
+
+def _column_values_are_locations(series):
+    values = series.dropna().astype(str).unique()
+    if len(values) == 0:
+        return False
+    return all(value in LOCATION_MAP for value in values)
+
+
+def choose_link_columns(meta):
+    """Pick subject, limb, and time columns from the 3-column test table."""
+    print("Test meta columns:", meta.columns.tolist())
+    print(meta.head(3).to_string(index=False))
+    print("nunique:\n" + meta.nunique().to_string())
+
+    location_col = None
+    for column in meta.columns:
+        if _column_values_are_locations(meta[column]):
+            location_col = column
+            break
+    if location_col is None:
+        raise KeyError("No limb column found. Expected values like right_arm, left_leg.")
+
+    subject_col = None
+    for name in ("sbj_id", "subject_id", "subject", "sbj", "participant_id", "participant"):
+        if name in meta.columns and name != location_col:
+            subject_col = name
+            break
+    if subject_col is None:
+        for column in meta.columns:
+            if column == location_col:
+                continue
+            nunique = meta[column].nunique(dropna=True)
+            if 2 <= nunique <= 12 and pd.api.types.is_numeric_dtype(meta[column]):
+                subject_col = column
+                break
+    if subject_col is None:
+        raise KeyError("No subject column found. Cannot link windows across a timeline.")
+
+    time_col = None
+    for name in ("time", "timestamp", "t", "start", "start_idx", "start_time", "window_start", "idx"):
+        if name in meta.columns and name not in (location_col, subject_col):
+            time_col = name
+            break
+    if time_col is None:
+        leftovers = [c for c in meta.columns if c not in (location_col, subject_col)]
+        numeric = [c for c in leftovers if pd.api.types.is_numeric_dtype(meta[c])]
+        if len(numeric) == 1:
+            time_col = numeric[0]
+        elif "id" in meta.columns and "id" not in (location_col, subject_col):
+            time_col = "id"
+        elif leftovers:
+            time_col = leftovers[0]
+    print(f"Link columns: subject={subject_col}  limb={location_col}  time={time_col}")
+    return subject_col, location_col, time_col
+
+
+def link_gap(times):
+    """Gap that connects about 95% of successive windows, matching the published link rate."""
+    gaps = np.diff(np.sort(times.astype(np.float64)))
+    gaps = gaps[gaps > 0]
+    if len(gaps) == 0:
+        return 1.0
+    return float(np.quantile(gaps, 0.95))
+
+
+def smooth_probabilities(probs, radius=2, low_conf=0.45, high_conf=0.60):
+    """Copy a confident neighbor only into an unsure window. Never spread null."""
+    updated = probs.astype(np.float64).copy()
+    pred = updated.argmax(axis=1)
+    conf = updated.max(axis=1)
+    for index in range(len(updated)):
+        if conf[index] >= low_conf:
+            continue
+        start = max(0, index - radius)
+        stop = min(len(updated), index + radius + 1)
+        strong = [
+            other
+            for other in range(start, stop)
+            if other != index and conf[other] >= high_conf and pred[other] != 0
+        ]
+        if not strong:
+            continue
+        votes = pred[strong]
+        classes, counts = np.unique(votes, return_counts=True)
+        if counts.max() < max(1, int(np.ceil(0.6 * len(strong)))):
+            continue
+        mixed = 0.35 * updated[index] + 0.65 * updated[strong].mean(axis=0)
+        mixed /= mixed.sum()
+        updated[index] = mixed
+    return updated.astype(np.float32)
+
+
+def link_probability_matrix(meta, probs):
+    subject_col, location_col, time_col = choose_link_columns(meta)
+    subjects = meta[subject_col].to_numpy()
+    locations = meta[location_col].astype(str).to_numpy()
+    times = pd.to_numeric(meta[time_col], errors="coerce").to_numpy()
+    if np.isnan(times).any():
+        raise ValueError(f"Time column {time_col} is not numeric.")
+
+    linked_probs = probs.copy()
+    n_linked = 0
+    print("\nsubject   windows   chains   linked   median_score_before   median_score_after")
+    for subject in pd.unique(subjects):
+        subject_index = np.flatnonzero(subjects == subject)
+        chains = 0
+        subject_linked = 0
+        for location in pd.unique(locations[subject_index]):
+            idx = subject_index[locations[subject_index] == location]
+            order = np.argsort(times[idx], kind="mergesort")
+            idx = idx[order]
+            local_times = times[idx]
+            gap = link_gap(local_times)
+            start = 0
+            for cursor in range(1, len(idx) + 1):
+                split = cursor == len(idx) or (local_times[cursor] - local_times[cursor - 1]) > gap
+                if not split:
+                    continue
+                block = idx[start:cursor]
+                chains += 1
+                if len(block) > 1:
+                    subject_linked += len(block)
+                    linked_probs[block] = smooth_probabilities(probs[block])
+                start = cursor
+        rate = subject_linked / max(len(subject_index), 1)
+        n_linked += subject_linked
+        before = float(np.median(probs[subject_index].max(axis=1)))
+        after = float(np.median(linked_probs[subject_index].max(axis=1)))
+        print(
+            f"{subject!s:>7}   {len(subject_index):7d}   {chains:6d}   {rate:6.3f}   {before:20.2f}   {after:18.2f}"
+        )
+    print(f"test linked {n_linked / max(len(meta), 1):.3f}")
+    return linked_probs
+
+
+def ensemble_test_probabilities():
+    ckpt_root = find_exp12_checkpoints()
+    print("Checkpoints:", ckpt_root)
+    cached = os.path.join(OUT_DIR, "exp12_test_probs.npy")
+    test_inertial, test_video, test_meta = prepare_test_arrays()
+    if os.path.exists(cached):
+        probs = np.load(cached)
+        if probs.shape == (len(test_inertial), NUM_CLASSES):
+            print("Loaded cached probabilities:", cached)
+            return probs, test_meta
+    fold_probs = []
+    for fold in range(1, N_FOLDS + 1):
+        checkpoint = torch.load(
+            os.path.join(ckpt_root, f"{CHECKPOINT_PREFIX}_fold{fold}.pt"),
+            map_location=DEVICE,
+            weights_only=False,
+        )
+        model = AlignedFusionWEAR().to(DEVICE)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        loader = make_loader(
+            TestDataset(test_inertial, test_video, test_meta, checkpoint["mean"], checkpoint["std"])
+        )
+        fold_probs.append(collect_probabilities(model, loader, has_label=False))
+        print(f"Fold {fold} probs:", fold_probs[-1].shape)
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    probs = np.mean(np.stack(fold_probs, axis=0), axis=0).astype(np.float32)
+    np.save(cached, probs)
+    return probs, test_meta
+
+
+def link_test():
+    """Keep the experiment 12 model. Average probabilities along each subject timeline."""
+    print("=" * 70)
+    print("EXP12 — LINK WINDOWS ON EACH SUBJECT TIMELINE")
+    print("=" * 70)
+    print("Device:", DEVICE)
+    configure_paths()
+    os.makedirs(OUT_DIR, exist_ok=True)
+    probs, test_meta = ensemble_test_probabilities()
+    before = probs.argmax(1)
+    linked = link_probability_matrix(test_meta, probs)
+    predictions = linked.argmax(1)
+    print(f"Predictions changed: {(predictions != before).sum()} of {len(predictions)}")
+    print(f"Null predictions: {(before == 0).sum()} -> {(predictions == 0).sum()}")
+
+    sample_submission = pd.read_csv(SAMPLE_SUB_PATH)
+    id_column = sample_submission.columns[0]
+    target_column = sample_submission.columns[1]
+    id_source = "id" if "id" in test_meta.columns else test_meta.columns[0]
+    submission = (
+        pd.DataFrame({id_column: test_meta[id_source].values, target_column: predictions})
+        .sort_values(id_column)
+        .reset_index(drop=True)
+    )
+    path = os.path.join(OUT_DIR, "exp12_linked_submission.csv")
+    submission.to_csv(path, index=False)
+    submission.to_csv(os.path.join(OUT_DIR, "submission.csv"), index=False)
+    print("Submission:", path, submission.shape)
+
+
+link_test()
+
+##### CELL 4 [code]
+
+import torch.nn as nn
+import torch.nn.functional as F
+from sklearn.metrics import accuracy_score, classification_report, f1_score
+from sklearn.model_selection import GroupKFold
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+
+warnings.filterwarnings("ignore")
+
+# ------------------------------------------------------------
+# Config
+# ------------------------------------------------------------
+
+BASE = os.environ.get("WEAR_BASE", "")
+TRAIN_INERTIAL_DIR = ""
+TRAIN_VIDEO_DIR = ""
+TEST_INERTIAL_PATH = ""
+TEST_VIDEO_PATH = ""
+TEST_META_PATH = ""
+SAMPLE_SUB_PATH = ""
+OUT_DIR = os.environ.get("WEAR_OUT", "/kaggle/working")
+CHECKPOINT_PREFIX = "exp12_aligned_fusion"
+
+
+def _peek_kaggle_input():
+    root = "/kaggle/input"
+    if not os.path.isdir(root):
+        return "/kaggle/input is not on this machine."
+    lines = []
+    for dirpath, dirnames, _ in os.walk(root):
+        depth = dirpath[len(root):].count(os.sep)
+        if depth > 3:
+            dirnames.clear()
+            continue
+        lines.append(dirpath)
+        if len(lines) >= 40:
+            break
+    return "Folders under /kaggle/input:\n" + "\n".join(lines)
+
+
+def resolve_base():
+    env = os.environ.get("WEAR_BASE")
+    if env and os.path.isdir(os.path.join(env, "train", "inertial_feat")):
+        return env
+    candidates = [
+        "/kaggle/input/competitions/3rd-wear-dataset-challenge-hasca-2026",
+        "/kaggle/input/3rd-wear-dataset-challenge-hasca-2026",
+    ]
+    for path in candidates:
+        if os.path.isdir(os.path.join(path, "train", "inertial_feat")):
+            return path
+    root = "/kaggle/input"
+    if os.path.isdir(root):
+        for dirpath, dirnames, _ in os.walk(root):
+            if (
+                os.path.basename(dirpath) == "inertial_feat"
+                and os.path.basename(os.path.dirname(dirpath)) == "train"
+            ):
+                return os.path.dirname(os.path.dirname(dirpath))
+            depth = dirpath[len(root):].count(os.sep)
+            if depth > 4:
+                dirnames.clear()
+    raise FileNotFoundError(
+        "Competition files were not found. In the Kaggle notebook sidebar, "
+        "open Input and add the 3rd WEAR Dataset Challenge data, then run the cell again.\n"
+        + _peek_kaggle_input()
+    )
+
+
+def configure_paths():
+    global BASE, TRAIN_INERTIAL_DIR, TRAIN_VIDEO_DIR
+    global TEST_INERTIAL_PATH, TEST_VIDEO_PATH, TEST_META_PATH, SAMPLE_SUB_PATH, OUT_DIR
+    BASE = resolve_base()
+    TRAIN_INERTIAL_DIR = os.path.join(BASE, "train", "inertial_feat")
+    TRAIN_VIDEO_DIR = os.path.join(BASE, "train", "videomae_feat")
+    TEST_INERTIAL_PATH = os.path.join(BASE, "test", "test_inertial_data.npy")
+    TEST_VIDEO_PATH = os.path.join(BASE, "test", "test_videomae_data.npy")
+    TEST_META_PATH = os.path.join(BASE, "test", "test_meta_data.csv")
+    SAMPLE_SUB_PATH = os.path.join(BASE, "sample_submission.csv")
+    OUT_DIR = os.environ.get("WEAR_OUT", "/kaggle/working")
+    print("Data root:", BASE)
+
+N_FOLDS = 5
+BATCH_SIZE = 256
+EPOCHS = 30
+LR = 1e-3
+WEIGHT_DECAY = 1e-4
+NUM_CLASSES = 19
+SEED = 42
+NUM_WORKERS = int(os.environ.get("WEAR_WORKERS", "2"))
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+INERTIAL_HZ = 50
+WINDOW_SIZE = 50
+STRIDE = 25
+VIDEO_INPUT_FRAMES = 15
+# Set this only if the printed feat/sec is wrong. None = auto.
+FORCE_FEAT_FPS = None
+
+LOCATIONS = ["right_arm", "right_leg", "left_leg", "left_arm"]
+LOCATION_MAP = {name: i for i, name in enumerate(LOCATIONS)}
+SENSOR_COLUMNS = {
+    loc: [f"{loc}_acc_x", f"{loc}_acc_y", f"{loc}_acc_z"] for loc in LOCATIONS
+}
+ALL_SENSOR_COLUMNS = [c for loc in LOCATIONS for c in SENSOR_COLUMNS[loc]]
+
+LABEL_MAP = {
+    "null": 0,
+    "jogging": 1,
+    "jogging (rotating arms)": 2,
+    "jogging (skipping)": 3,
+    "jogging (sidesteps)": 4,
+    "jogging (butt-kicks)": 5,
+    "stretching (triceps)": 6,
+    "stretching (lunging)": 7,
+    "stretching (shoulders)": 8,
+    "stretching (hamstrings)": 9,
+    "stretching (lumbar rotation)": 10,
+    "push-ups": 11,
+    "push-ups (complex)": 12,
+    "sit-ups": 13,
+    "sit-ups (complex)": 14,
+    "burpees": 15,
+    "lunges": 16,
+    "lunges (complex)": 17,
+    "bench-dips": 18,
+}
+ID_TO_LABEL = {v: k for k, v in LABEL_MAP.items()}
+FPS_CANDIDATES = (15, 16, 25, 30, 50, 60)
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+set_seed(SEED)
+
+
+# ------------------------------------------------------------
+# Video rate
+# ------------------------------------------------------------
+
+def estimate_feat_fps(n_inertial_rows, n_video_frames):
+    """How many stored video vectors cover one real second."""
+    raw = n_video_frames / max(n_inertial_rows / INERTIAL_HZ, 1e-6)
+    if FORCE_FEAT_FPS is not None:
+        return float(FORCE_FEAT_FPS), raw
+    snapped = min(FPS_CANDIDATES, key=lambda c: abs(c - raw))
+    if abs(snapped - raw) / snapped <= 0.12:
+        return float(snapped), raw
+    return float(raw), raw
+
+
+def frame_indices(start_idx, n_video, feat_fps):
+    """15 frames spread uniformly across this 1-second inertial window."""
+    origin = start_idx * feat_fps / INERTIAL_HZ
+    span = WINDOW_SIZE * feat_fps / INERTIAL_HZ
+    # Bin centers inside [origin, origin + span). Floor avoids banker-rounding
+    # of *.5, which would skip frames when there are exactly 15 of them.
+    pos = origin + (np.arange(VIDEO_INPUT_FRAMES) + 0.5) * span / VIDEO_INPUT_FRAMES
+    idx = np.floor(pos).astype(np.int64)
+    np.clip(idx, 0, max(n_video - 1, 0), out=idx)
+    return idx
+
+
+def with_magnitude(x3):
+    mag = np.linalg.norm(x3, axis=1, keepdims=True)
+    return np.concatenate([x3, mag], axis=1).astype(np.float32)
+
+
+# ------------------------------------------------------------
+# Load CSV windows
+# ------------------------------------------------------------
+
+def load_and_encode(csv_path):
+    df = pd.read_csv(csv_path, low_memory=False)
+    df["label"] = df["label"].fillna("null")
+    unknown = set(df["label"].unique()) - set(LABEL_MAP)
+    if unknown:
+        raise ValueError(f"Unknown labels in {csv_path}: {unknown}")
+    df["label_id"] = df["label"].map(LABEL_MAP).astype(np.int64)
+    for col in ALL_SENSOR_COLUMNS:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df[ALL_SENSOR_COLUMNS] = df[ALL_SENSOR_COLUMNS].replace([np.inf, -np.inf], np.nan)
+    bad = int(df[ALL_SENSOR_COLUMNS].isna().sum().sum())
+    if bad:
+        print(f"Cleaning {bad} bad sensor values in {os.path.basename(csv_path)}")
+        df[ALL_SENSOR_COLUMNS] = df[ALL_SENSOR_COLUMNS].ffill().bfill().fillna(0)
+    df[ALL_SENSOR_COLUMNS] = df[ALL_SENSOR_COLUMNS].clip(-20, 20)
+    return df
+
+
+def build_windows_for_subject(df, sbj_file, feat_fps):
+    sbj_id = int(df["sbj_id"].iloc[0])
+    labels = df["label_id"].to_numpy()
+    sensors = {
+        loc: df[SENSOR_COLUMNS[loc]].to_numpy(np.float32) for loc in LOCATIONS
+    }
+    samples = []
+    for start in range(0, len(df) - WINDOW_SIZE + 1, STRIDE):
+        window_labels = labels[start : start + WINDOW_SIZE]
+        label = int(np.argmax(np.bincount(window_labels, minlength=NUM_CLASSES)))
+        for location in LOCATIONS:
+            samples.append(
+                {
+                    "x": sensors[location][start : start + WINDOW_SIZE],
+                    "y": label,
+                    "location": location,
+                    "sbj_id": sbj_id,
+                    "sbj_file": sbj_file,
+                    "start_idx": start,
+                    "feat_fps": feat_fps,
+                }
+            )
+    return samples
+
+
+def build_dataset(train_dir):
+    samples = []
+    csv_files = sorted(f for f in os.listdir(train_dir) if f.endswith(".csv"))
+    print(f"\nTraining CSV files: {len(csv_files)}")
+    print("-" * 70)
+    for filename in csv_files:
+        df = load_and_encode(os.path.join(train_dir, filename))
+        sbj_file = filename.replace(".csv", "")
+        video_path = os.path.join(TRAIN_VIDEO_DIR, sbj_file + ".npy")
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(video_path)
+        n_video = np.load(video_path, mmap_mode="r").shape[0]
+        feat_fps, raw_fps = estimate_feat_fps(len(df), n_video)
+        subject_samples = build_windows_for_subject(df, sbj_file, feat_fps)
+        samples.extend(subject_samples)
+        print(
+            f"{filename:20s} rows={len(df):7d} video={n_video:7d} "
+            f"feat/sec={raw_fps:6.2f} -> {feat_fps:g}  "
+            f"samples={len(subject_samples):7d}"
+        )
+    print("-" * 70)
+    print("Total training samples:", len(samples))
+    print("Unique subjects:", len({s["sbj_id"] for s in samples}))
+    return samples
+
+
+# ------------------------------------------------------------
+# Dataset
+# ------------------------------------------------------------
+
+class MultimodalWEARDataset(Dataset):
+    def __init__(self, samples, mean, std, augment=False):
+        self.samples = samples
+        self.mean = mean
+        self.std = std
+        self.augment = augment
+        self._video_cache = {}
+
+    def __len__(self):
+        return len(self.samples)
+
+    def _video(self, sbj_file):
+        if sbj_file not in self._video_cache:
+            path = os.path.join(TRAIN_VIDEO_DIR, sbj_file + ".npy")
+            self._video_cache[sbj_file] = np.load(path, mmap_mode="r")
+        return self._video_cache[sbj_file]
+
+    def __getitem__(self, index):
+        sample = self.samples[index]
+        x = sample["x"].copy()
+        if self.augment:
+            x *= np.float32(np.random.uniform(0.85, 1.15))
+            x += np.random.normal(0, 0.02, x.shape).astype(np.float32)
+        x = with_magnitude(x)
+        x = (x - self.mean) / self.std
+        inertial = torch.from_numpy(np.ascontiguousarray(x.T))
+
+        video_array = self._video(sample["sbj_file"])
+        idx = frame_indices(sample["start_idx"], video_array.shape[0], sample["feat_fps"])
+        clip = np.asarray(video_array[idx], dtype=np.float32)
+        if clip.shape != (VIDEO_INPUT_FRAMES, 768):
+            raise RuntimeError(
+                f"Video clip shape {clip.shape} for {sample['sbj_file']} "
+                f"start={sample['start_idx']} fps={sample['feat_fps']}"
+            )
+        video = torch.from_numpy(np.ascontiguousarray(clip))
+        y = torch.tensor(sample["y"], dtype=torch.long)
+        location = torch.tensor(LOCATION_MAP[sample["location"]], dtype=torch.long)
+        return inertial, video, y, location
+
+
+def get_normalization(samples):
+    total = 0
+    sum_ = np.zeros(4, dtype=np.float64)
+    sumsq = np.zeros(4, dtype=np.float64)
+    for sample in samples:
+        x = with_magnitude(sample["x"]).astype(np.float64)
+        sum_ += x.sum(axis=0)
+        sumsq += np.square(x).sum(axis=0)
+        total += x.shape[0]
+    mean = sum_ / total
+    var = np.maximum(sumsq / total - np.square(mean), 1e-8)
+    return mean.astype(np.float32), np.sqrt(var).astype(np.float32)
+
+
+def make_sampler(samples):
+    labels = np.array([s["y"] for s in samples], dtype=np.int64)
+    counts = np.bincount(labels, minlength=NUM_CLASSES).astype(np.float64)
+    weights = 1.0 / np.maximum(counts[labels], 1.0)
+    return WeightedRandomSampler(
+        torch.as_tensor(weights, dtype=torch.double),
+        num_samples=len(weights),
+        replacement=True,
+    )
+
+
+# ------------------------------------------------------------
+# Model
+# ------------------------------------------------------------
+
+class ConvBlock(nn.Module):
+    def __init__(self, channels_in, channels_out, stride):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv1d(channels_in, channels_out, 5, stride=stride, padding=2, bias=False),
+            nn.GroupNorm(8, channels_out),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(channels_out, channels_out, 5, padding=2, bias=False),
+            nn.GroupNorm(8, channels_out),
+        )
+        if channels_in == channels_out and stride == 1:
+            self.skip = nn.Identity()
+        else:
+            self.skip = nn.Conv1d(channels_in, channels_out, 1, stride=stride, bias=False)
+
+    def forward(self, x):
+        return F.relu(self.net(x) + self.skip(x), inplace=True)
+
+
+class AlignedFusionWEAR(nn.Module):
+    def __init__(self, num_classes=NUM_CLASSES):
+        super().__init__()
+        self.stem = nn.Sequential(
+            nn.Conv1d(4, 32, 7, padding=3, bias=False),
+            nn.GroupNorm(8, 32),
+            nn.ReLU(inplace=True),
+        )
+        self.block1 = ConvBlock(32, 32, stride=1)
+        self.block2 = ConvBlock(32, 64, stride=2)
+        self.block3 = ConvBlock(64, 128, stride=2)
+
+        video_dim = 192
+        self.video_proj = nn.Sequential(
+            nn.Linear(768, video_dim),
+            nn.LayerNorm(video_dim),
+            nn.GELU(),
+            nn.Dropout(0.1),
+        )
+        self.video_pos = nn.Parameter(torch.zeros(1, VIDEO_INPUT_FRAMES, video_dim))
+        nn.init.trunc_normal_(self.video_pos, std=0.02)
+        layer = nn.TransformerEncoderLayer(
+            d_model=video_dim,
+            nhead=4,
+            dim_feedforward=384,
+            dropout=0.1,
+            batch_first=True,
+            activation="gelu",
+            norm_first=True,
+        )
+        self.video_encoder = nn.TransformerEncoder(layer, num_layers=2)
+
+        self.query = nn.Linear(384, video_dim)
+        self.key = nn.Linear(video_dim, video_dim)
+        self.value = nn.Linear(video_dim, video_dim)
+        self.attn_scale = video_dim ** -0.5
+        self.location_embedding = nn.Embedding(4, 16)
+
+        self.fusion = nn.Sequential(
+            nn.Linear(384 + video_dim + 16, 256),
+            nn.LayerNorm(256),
+            nn.GELU(),
+            nn.Dropout(0.3),
+            nn.Linear(256, 128),
+            nn.GELU(),
+            nn.Dropout(0.2),
+        )
+        self.head_f = nn.Linear(128, num_classes)
+        self.head_i = nn.Linear(384, num_classes)
+        self.head_v = nn.Linear(video_dim, num_classes)
+
+    def encode(self, inertial, video, location):
+        h = self.block3(self.block2(self.block1(self.stem(inertial))))
+        inertial_feature = torch.cat([h.mean(2), h.std(2), h.amax(2)], dim=1)
+
+        tokens = self.video_encoder(self.video_proj(video) + self.video_pos)
+        video_feature = tokens.mean(dim=1)
+
+        query = self.query(inertial_feature).unsqueeze(1)
+        key = self.key(tokens)
+        value = self.value(tokens)
+        weights = torch.softmax(torch.matmul(query, key.transpose(1, 2)) * self.attn_scale, dim=-1)
+        attended = torch.matmul(weights, value).squeeze(1)
+
+        loc = self.location_embedding(location)
+        fused = self.fusion(torch.cat([inertial_feature, attended, loc], dim=1))
+        return fused, inertial_feature, video_feature
+
+    def forward(self, inertial, video, location):
+        fused, inertial_feature, video_feature = self.encode(inertial, video, location)
+        return (
+            self.head_f(fused),
+            self.head_i(inertial_feature),
+            self.head_v(video_feature),
+        )
+
+
+def blend_logits(logits_f, logits_i, logits_v):
+    probs = (
+        torch.softmax(logits_f, dim=1)
+        + torch.softmax(logits_i, dim=1)
+        + torch.softmax(logits_v, dim=1)
+    ) / 3.0
+    return probs
+
+
+# ------------------------------------------------------------
+# Train / eval
+# ------------------------------------------------------------
+
+def run_epoch(model, loader, optimizer=None):
+    training = optimizer is not None
+    model.train(training)
+    total_loss = 0.0
+    pred_chunks = []
+    true_chunks = []
+    pred_i_chunks = []
+    pred_v_chunks = []
+    loss_fn = nn.CrossEntropyLoss()
+
+    for inertial, video, y, location in loader:
+        inertial = inertial.to(DEVICE, non_blocking=True)
+        video = video.to(DEVICE, non_blocking=True)
+        y = y.to(DEVICE, non_blocking=True)
+        location = location.to(DEVICE, non_blocking=True)
+
+        with torch.set_grad_enabled(training):
+            logits_f, logits_i, logits_v = model(inertial, video, location)
+            loss = (
+                loss_fn(logits_f, y)
+                + 0.5 * loss_fn(logits_i, y)
+                + 0.5 * loss_fn(logits_v, y)
+            )
+            if training:
+                optimizer.zero_grad(set_to_none=True)
+                loss.backward()
+                nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
+
+        total_loss += loss.item() * inertial.size(0)
+        probs = blend_logits(logits_f, logits_i, logits_v)
+        pred_chunks.append(probs.argmax(1).detach().cpu().numpy())
+        pred_i_chunks.append(logits_i.argmax(1).detach().cpu().numpy())
+        pred_v_chunks.append(logits_v.argmax(1).detach().cpu().numpy())
+        true_chunks.append(y.detach().cpu().numpy())
+
+    targets = np.concatenate(true_chunks)
+    predictions = np.concatenate(pred_chunks)
+    return {
+        "loss": total_loss / max(len(targets), 1),
+        "acc": accuracy_score(targets, predictions),
+        "f1": f1_score(targets, predictions, average="macro", zero_division=0),
+        "f1_i": f1_score(
+            targets, np.concatenate(pred_i_chunks), average="macro", zero_division=0
+        ),
+        "f1_v": f1_score(
+            targets, np.concatenate(pred_v_chunks), average="macro", zero_division=0
+        ),
+    }
+
+
+def make_loader(dataset, shuffle=False, sampler=None, drop_last=False):
+    return DataLoader(
+        dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=shuffle,
+        sampler=sampler,
+        num_workers=NUM_WORKERS,
+        pin_memory=DEVICE.type == "cuda",
+        drop_last=drop_last,
+        persistent_workers=NUM_WORKERS > 0,
+    )
+
+
+def train_one_fold(train_samples, val_samples, fold):
+    print(f"\n{'=' * 70}\nFOLD {fold}/{N_FOLDS}\n{'=' * 70}")
+    set_seed(SEED + fold)
+    mean, std = get_normalization(train_samples)
+    train_ds = MultimodalWEARDataset(train_samples, mean, std, augment=True)
+    val_ds = MultimodalWEARDataset(val_samples, mean, std, augment=False)
+    train_loader = make_loader(
+        train_ds, sampler=make_sampler(train_samples), drop_last=True
+    )
+    val_loader = make_loader(val_ds)
+
+    model = AlignedFusionWEAR().to(DEVICE)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
+    best_f1 = -1.0
+    best_state = None
+    history = []
+
+    for epoch in range(EPOCHS):
+        train_m = run_epoch(model, train_loader, optimizer)
+        val_m = run_epoch(model, val_loader)
+        scheduler.step()
+        history.append(
+            {
+                "epoch": epoch + 1,
+                "train_macro_f1": train_m["f1"],
+                "train_f1_inertial": train_m["f1_i"],
+                "train_f1_video": train_m["f1_v"],
+                "val_macro_f1": val_m["f1"],
+                "val_f1_inertial": val_m["f1_i"],
+                "val_f1_video": val_m["f1_v"],
+                "val_accuracy": val_m["acc"],
+                "val_loss": val_m["loss"],
+            }
+        )
+        print(
+            f"Epoch {epoch + 1:02d}/{EPOCHS} | "
+            f"Train F1 {train_m['f1']:.4f} | "
+            f"Val F1 {val_m['f1']:.4f} | "
+            f"Val inertial {val_m['f1_i']:.4f} | "
+            f"Val video {val_m['f1_v']:.4f} | "
+            f"Val acc {val_m['acc']:.4f}"
+        )
+        if val_m["f1"] > best_f1:
+            best_f1 = val_m["f1"]
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+
+    model.load_state_dict(best_state)
+    ckpt_path = os.path.join(OUT_DIR, f"{CHECKPOINT_PREFIX}_fold{fold}.pt")
+    torch.save(
+        {
+            "model_state_dict": model.state_dict(),
+            "mean": mean,
+            "std": std,
+            "best_f1": best_f1,
+            "fold": fold,
+        },
+        ckpt_path,
+    )
+    pd.DataFrame(history).to_csv(
+        os.path.join(OUT_DIR, f"{CHECKPOINT_PREFIX}_fold{fold}_history.csv"),
+        index=False,
+    )
+    print(f"Fold {fold} best blend Macro-F1: {best_f1:.4f}")
+    return model, (mean, std), best_f1
+
+
+# ------------------------------------------------------------
+# Test
+# ------------------------------------------------------------
+
+def prepare_test_arrays():
+    inertial = np.load(TEST_INERTIAL_PATH).astype(np.float32)
+    video = np.load(TEST_VIDEO_PATH)
+    meta = pd.read_csv(TEST_META_PATH)
+    print("Test inertial original:", inertial.shape)
+    print("Test video original:", video.shape)
+    print("Test metadata:", meta.shape)
+
+    if inertial.ndim == 3 and inertial.shape[1:] == (3, 50):
+        inertial = np.transpose(inertial, (0, 2, 1))
+    if inertial.ndim != 3 or inertial.shape[1:] != (50, 3):
+        raise ValueError(f"Unexpected test inertial shape {inertial.shape}")
+
+    if video.ndim != 3:
+        raise ValueError(f"Unexpected test video shape {video.shape}")
+    if video.shape[1:] == (768, VIDEO_INPUT_FRAMES):
+        print("Transposing test video [B,768,15] -> [B,15,768]")
+        video = np.transpose(video, (0, 2, 1))
+    if video.shape[1:] != (VIDEO_INPUT_FRAMES, 768):
+        raise ValueError(f"Unexpected test video shape {video.shape}")
+    return inertial, video.astype(np.float32), meta
+
+
+def location_from_meta(meta, index):
+    for column in (
+        "sensor_location",
+        "inertial_sensor_location",
+        "location",
+        "limb",
+    ):
+        if column in meta.columns:
+            return meta.iloc[index][column]
+    raise KeyError(f"No sensor location column in {list(meta.columns)}")
+
+
+class TestDataset(Dataset):
+    def __init__(self, inertial, video, meta, mean, std):
+        self.inertial = inertial
+        self.video = video
+        self.meta = meta.reset_index(drop=True)
+        self.mean = mean
+        self.std = std
+
+    def __len__(self):
+        return len(self.inertial)
+
+    def __getitem__(self, index):
+        x = with_magnitude(self.inertial[index])
+        x = (x - self.mean) / self.std
+        inertial = torch.from_numpy(np.ascontiguousarray(x.T))
+        video = torch.from_numpy(np.ascontiguousarray(self.video[index]))
+        location = torch.tensor(
+            LOCATION_MAP[location_from_meta(self.meta, index)], dtype=torch.long
+        )
+        return inertial, video, location
+
+
+def main():
+    print("=" * 70)
+    print("WEAR DATASET — EXPERIMENT 12")
+    print("ALIGNED VIDEO + TEMPORAL POOLING + 3 HEADS")
+    print("=" * 70)
+    print("Device:", DEVICE)
+    if torch.cuda.is_available():
+        print("GPU:", torch.cuda.get_device_name(0))
+    else:
+        print("No GPU visible. In Kaggle: Settings → Accelerator → GPU, then Run All again.")
+
+    configure_paths()
+    os.makedirs(OUT_DIR, exist_ok=True)
+    if not os.path.isdir(TRAIN_INERTIAL_DIR):
+        raise FileNotFoundError(f"Training dir not found: {TRAIN_INERTIAL_DIR}")
+
+    samples = build_dataset(TRAIN_INERTIAL_DIR)
+    groups = np.array([s["sbj_id"] for s in samples])
+    y_all = np.array([s["y"] for s in samples])
+    starts = np.array([s["start_idx"] for s in samples])
+
+    print("\nClass counts (4 limbs x overlapping windows):")
+    counts = np.bincount(y_all, minlength=NUM_CLASSES)
+    for i, count in enumerate(counts):
+        print(f"  {i:2d} {ID_TO_LABEL[i]:32s} {count:8d}")
+
+    gkf = GroupKFold(n_splits=N_FOLDS)
+    fold_scores = []
+    oof_pred = np.zeros(len(samples), dtype=np.int64)
+
+    for fold, (train_idx, val_idx) in enumerate(gkf.split(samples, y_all, groups), start=1):
+        train_samples = [samples[i] for i in train_idx]
+        val_samples = [samples[i] for i in val_idx]
+        ckpt_path = os.path.join(OUT_DIR, f"{CHECKPOINT_PREFIX}_fold{fold}.pt")
+        if os.path.exists(ckpt_path):
+            print(f"Fold {fold} checkpoint already saved, loading {ckpt_path}")
+            checkpoint = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
+            model = AlignedFusionWEAR().to(DEVICE)
+            model.load_state_dict(checkpoint["model_state_dict"])
+            mean, std = checkpoint["mean"], checkpoint["std"]
+            best_f1 = float(checkpoint["best_f1"])
+        else:
+            model, (mean, std), best_f1 = train_one_fold(train_samples, val_samples, fold)
+        fold_scores.append(best_f1)
+
+        val_ds = MultimodalWEARDataset(val_samples, mean, std, augment=False)
+        val_loader = make_loader(val_ds)
+        probs = []
+        model.eval()
+        with torch.no_grad():
+            for inertial, video, y, location in val_loader:
+                inertial = inertial.to(DEVICE, non_blocking=True)
+                video = video.to(DEVICE, non_blocking=True)
+                location = location.to(DEVICE, non_blocking=True)
+                probs.append(
+                    blend_logits(*model(inertial, video, location)).cpu().numpy()
+                )
+        oof_pred[val_idx] = np.concatenate(probs, axis=0).argmax(1)
+        print(f"OOF predictions stored for fold {fold}")
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    mean_cv = float(np.mean(fold_scores))
+    std_cv = float(np.std(fold_scores))
+    oof_f1 = f1_score(y_all, oof_pred, average="macro", zero_division=0)
+    oof_acc = accuracy_score(y_all, oof_pred)
+    nonoverlap = starts % WINDOW_SIZE == 0
+    nonoverlap_f1 = f1_score(
+        y_all[nonoverlap], oof_pred[nonoverlap], average="macro", zero_division=0
+    )
+
+    print(f"\n{'=' * 70}\nEXP12 RESULTS\n{'=' * 70}")
+    print("Fold scores:", [round(x, 4) for x in fold_scores])
+    print(f"Mean CV Macro-F1 : {mean_cv:.4f}")
+    print(f"Std CV Macro-F1  : {std_cv:.4f}")
+    print(f"OOF Macro-F1     : {oof_f1:.4f}")
+    print(f"OOF Accuracy     : {oof_acc:.4f}")
+    print(f"Non-overlap OOF Macro-F1 (stride 50): {nonoverlap_f1:.4f}")
+    print("\nOOF PER-CLASS REPORT")
+    print(
+        classification_report(
+            y_all,
+            oof_pred,
+            labels=np.arange(NUM_CLASSES),
+            target_names=[ID_TO_LABEL[i] for i in range(NUM_CLASSES)],
+            digits=4,
+            zero_division=0,
+        )
+    )
+
+    np.save(os.path.join(OUT_DIR, "exp12_oof_predictions.npy"), oof_pred)
+    np.save(os.path.join(OUT_DIR, "exp12_oof_targets.npy"), y_all)
+    pd.DataFrame({"fold": np.arange(1, N_FOLDS + 1), "macro_f1": fold_scores}).to_csv(
+        os.path.join(OUT_DIR, "exp12_fold_scores.csv"), index=False
+    )
+    pd.DataFrame(
+        {
+            "metric": [
+                "Mean CV Macro-F1",
+                "Std CV Macro-F1",
+                "OOF Macro-F1",
+                "OOF Accuracy",
+                "Non-overlap OOF Macro-F1",
+            ],
+            "value": [mean_cv, std_cv, oof_f1, oof_acc, nonoverlap_f1],
+        }
+    ).to_csv(os.path.join(OUT_DIR, "exp12_results.csv"), index=False)
+
+    print(f"\n{'=' * 70}\nTEST ENSEMBLE\n{'=' * 70}")
+    test_inertial, test_video, test_meta = prepare_test_arrays()
+    fold_probs = []
+    for fold in range(1, N_FOLDS + 1):
+        ckpt_path = os.path.join(OUT_DIR, f"{CHECKPOINT_PREFIX}_fold{fold}.pt")
+        checkpoint = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
+        model = AlignedFusionWEAR().to(DEVICE)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        model.eval()
+        loader = make_loader(
+            TestDataset(
+                test_inertial,
+                test_video,
+                test_meta,
+                checkpoint["mean"],
+                checkpoint["std"],
+            )
+        )
+        chunks = []
+        with torch.no_grad():
+            for inertial, video, location in loader:
+                inertial = inertial.to(DEVICE, non_blocking=True)
+                video = video.to(DEVICE, non_blocking=True)
+                location = location.to(DEVICE, non_blocking=True)
+                chunks.append(
+                    blend_logits(*model(inertial, video, location)).cpu().numpy()
+                )
+        fold_probs.append(np.concatenate(chunks, axis=0))
+        print(f"Fold {fold} probs:", fold_probs[-1].shape)
+        del model
+
+    ensemble = np.mean(np.stack(fold_probs, axis=0), axis=0)
+    predictions = ensemble.argmax(axis=1)
+    sample_submission = pd.read_csv(SAMPLE_SUB_PATH)
+    id_column = sample_submission.columns[0]
+    target_column = sample_submission.columns[1]
+    id_source = "id" if "id" in test_meta.columns else test_meta.columns[0]
+    submission = (
+        pd.DataFrame(
+            {id_column: test_meta[id_source].values, target_column: predictions}
+        )
+        .sort_values(id_column)
+        .reset_index(drop=True)
+    )
+    submission_path = os.path.join(OUT_DIR, "exp12_submission.csv")
+    submission.to_csv(submission_path, index=False)
+    submission.to_csv(os.path.join(OUT_DIR, "submission.csv"), index=False)
+
+    counts = np.bincount(predictions, minlength=NUM_CLASSES)
+    print("\nTEST PREDICTION DISTRIBUTION")
+    print(
+        pd.DataFrame(
+            {
+                "class_id": np.arange(NUM_CLASSES),
+                "class_name": [ID_TO_LABEL[i] for i in range(NUM_CLASSES)],
+                "count": counts,
+            }
+        ).to_string(index=False)
+    )
+    print("\nSubmission:", submission_path, submission.shape)
+    print(f"OOF Macro-F1: {oof_f1:.4f}")
+    print(f"Non-overlap Macro-F1: {nonoverlap_f1:.4f}")
+    print(f"Mean CV Macro-F1: {mean_cv:.4f}")
+
+
+def find_exp12_checkpoints():
+    needed = [f"{CHECKPOINT_PREFIX}_fold{fold}.pt" for fold in range(1, N_FOLDS + 1)]
+    roots = [
+        "/kaggle/input/datasets/swathiha/fusion-folds",
+        "/kaggle/input/fusion-folds",
+        OUT_DIR,
+        "/kaggle/working",
+    ]
+    if os.path.isdir("/kaggle/input"):
+        for dirpath, dirnames, filenames in os.walk("/kaggle/input"):
+            if all(name in filenames for name in needed):
+                roots.append(dirpath)
+            if dirpath[len("/kaggle/input"):].count(os.sep) > 5:
+                dirnames.clear()
+    for root in roots:
+        if root and all(os.path.exists(os.path.join(root, name)) for name in needed):
+            return root
+    raise FileNotFoundError(
+        "Missing exp12_aligned_fusion_fold1.pt through fold5.pt. "
+        "Add the experiment 12 notebook output under Input, or run this in the same session that trained them."
+    )
+
+
+def collect_probabilities(model, loader, has_label):
+    chunks = []
+    model.eval()
+    with torch.no_grad():
+        for batch in loader:
+            if has_label:
+                inertial, video, _y, location = batch
+            else:
+                inertial, video, location = batch
+            inertial = inertial.to(DEVICE, non_blocking=True)
+            video = video.to(DEVICE, non_blocking=True)
+            location = location.to(DEVICE, non_blocking=True)
+            chunks.append(blend_logits(*model(inertial, video, location)).cpu().numpy())
+    return np.concatenate(chunks, axis=0)
+
+
+def penalize_null(probs, penalty):
+    """Subtract `penalty` from the null log-probability. Larger penalty, fewer nulls."""
+    log_p = np.log(np.clip(probs, 1e-8, 1.0))
+    log_p = log_p.copy()
+    log_p[:, 0] -= penalty
+    log_p -= log_p.max(axis=1, keepdims=True)
+    exp = np.exp(log_p)
+    return exp / exp.sum(axis=1, keepdims=True)
+
+
+def calibrate_null():
+    """Reuse experiment 12 checkpoints. Lower null only while macro-F1 rises."""
+    print("=" * 70)
+    print("EXP12 — REDUCE NULL PREDICTIONS")
+    print("=" * 70)
+    print("Device:", DEVICE)
+    configure_paths()
+    os.makedirs(OUT_DIR, exist_ok=True)
+    ckpt_root = find_exp12_checkpoints()
+    print("Checkpoints:", ckpt_root)
+
+    samples = build_dataset(TRAIN_INERTIAL_DIR)
+    groups = np.array([s["sbj_id"] for s in samples])
+    y_all = np.array([s["y"] for s in samples])
+    oof = np.zeros((len(samples), NUM_CLASSES), dtype=np.float32)
+    gkf = GroupKFold(n_splits=N_FOLDS)
+
+    for fold, (_train_idx, val_idx) in enumerate(gkf.split(samples, y_all, groups), start=1):
+        checkpoint = torch.load(
+            os.path.join(ckpt_root, f"{CHECKPOINT_PREFIX}_fold{fold}.pt"),
+            map_location=DEVICE,
+            weights_only=False,
+        )
+        model = AlignedFusionWEAR().to(DEVICE)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        val_samples = [samples[i] for i in val_idx]
+        loader = make_loader(
+            MultimodalWEARDataset(val_samples, checkpoint["mean"], checkpoint["std"], augment=False)
+        )
+        oof[val_idx] = collect_probabilities(model, loader, has_label=True)
+        print(f"Fold {fold} OOF probabilities stored")
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    base_pred = oof.argmax(1)
+    base_f1 = f1_score(y_all, base_pred, average="macro", zero_division=0)
+    print(f"\nBaseline OOF Macro-F1: {base_f1:.4f}")
+    print(f"Baseline null predictions: {(base_pred == 0).mean():.3f}")
+
+    print("\npenalty   macro_f1   null_share   null_recall   triceps_recall   shoulders_recall")
+    best_penalty = 0.0
+    best_f1 = base_f1
+    for penalty in np.round(np.linspace(0.0, 1.5, 16), 3):
+        pred = penalize_null(oof, penalty).argmax(1)
+        score = f1_score(y_all, pred, average="macro", zero_division=0)
+        null_share = float((pred == 0).mean())
+        null_recall = float(((pred == 0) & (y_all == 0)).sum() / max((y_all == 0).sum(), 1))
+        tri = float(((pred == 6) & (y_all == 6)).sum() / max((y_all == 6).sum(), 1))
+        sho = float(((pred == 8) & (y_all == 8)).sum() / max((y_all == 8).sum(), 1))
+        print(
+            f"{penalty:7.2f}   {score:8.4f}   {null_share:9.3f}   "
+            f"{null_recall:10.3f}   {tri:14.3f}   {sho:16.3f}"
+        )
+        if score > best_f1 + 1e-5:
+            best_f1 = score
+            best_penalty = float(penalty)
+
+    print(f"\nChosen null penalty: {best_penalty:.2f}")
+    print(f"OOF Macro-F1: {base_f1:.4f} -> {best_f1:.4f}")
+    chosen = penalize_null(oof, best_penalty).argmax(1)
+    print(
+        classification_report(
+            y_all,
+            chosen,
+            labels=np.arange(NUM_CLASSES),
+            target_names=[ID_TO_LABEL[i] for i in range(NUM_CLASSES)],
+            digits=4,
+            zero_division=0,
+        )
+    )
+    np.save(os.path.join(OUT_DIR, "exp12_null_penalty.npy"), np.array([best_penalty]))
+
+    print(f"\n{'=' * 70}\nTEST WITH NULL PENALTY\n{'=' * 70}")
+    test_inertial, test_video, test_meta = prepare_test_arrays()
+    fold_probs = []
+    for fold in range(1, N_FOLDS + 1):
+        checkpoint = torch.load(
+            os.path.join(ckpt_root, f"{CHECKPOINT_PREFIX}_fold{fold}.pt"),
+            map_location=DEVICE,
+            weights_only=False,
+        )
+        model = AlignedFusionWEAR().to(DEVICE)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        loader = make_loader(
+            TestDataset(test_inertial, test_video, test_meta, checkpoint["mean"], checkpoint["std"])
+        )
+        fold_probs.append(collect_probabilities(model, loader, has_label=False))
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    ensemble = np.mean(np.stack(fold_probs, axis=0), axis=0)
+    before = ensemble.argmax(1)
+    after_probs = penalize_null(ensemble, best_penalty)
+    predictions = after_probs.argmax(1)
+    print(f"Test null predictions: {(before == 0).sum()} -> {(predictions == 0).sum()} of {len(predictions)}")
+
+    sample_submission = pd.read_csv(SAMPLE_SUB_PATH)
+    id_column = sample_submission.columns[0]
+    target_column = sample_submission.columns[1]
+    id_source = "id" if "id" in test_meta.columns else test_meta.columns[0]
+    submission = (
+        pd.DataFrame({id_column: test_meta[id_source].values, target_column: predictions})
+        .sort_values(id_column)
+        .reset_index(drop=True)
+    )
+    path = os.path.join(OUT_DIR, "exp12_null_submission.csv")
+    submission.to_csv(path, index=False)
+    submission.to_csv(os.path.join(OUT_DIR, "submission.csv"), index=False)
+    print("Submission:", path, submission.shape)
+
+
+def _column_values_are_locations(series):
+    values = series.dropna().astype(str).unique()
+    if len(values) == 0:
+        return False
+    return all(value in LOCATION_MAP for value in values)
+
+
+def choose_link_columns(meta):
+    """Pick subject, limb, and time columns from the 3-column test table."""
+    print("Test meta columns:", meta.columns.tolist())
+    print(meta.head(3).to_string(index=False))
+    print("nunique:\n" + meta.nunique().to_string())
+
+    location_col = None
+    for column in meta.columns:
+        if _column_values_are_locations(meta[column]):
+            location_col = column
+            break
+    if location_col is None:
+        raise KeyError("No limb column found. Expected values like right_arm, left_leg.")
+
+    subject_col = None
+    for name in ("sbj_id", "subject_id", "subject", "sbj", "participant_id", "participant"):
+        if name in meta.columns and name != location_col:
+            subject_col = name
+            break
+    if subject_col is None:
+        for column in meta.columns:
+            if column == location_col:
+                continue
+            nunique = meta[column].nunique(dropna=True)
+            if 2 <= nunique <= 12 and pd.api.types.is_numeric_dtype(meta[column]):
+                subject_col = column
+                break
+    if subject_col is None:
+        raise KeyError("No subject column found. Cannot link windows across a timeline.")
+
+    time_col = None
+    for name in ("time", "timestamp", "t", "start", "start_idx", "start_time", "window_start", "idx"):
+        if name in meta.columns and name not in (location_col, subject_col):
+            time_col = name
+            break
+    if time_col is None:
+        leftovers = [c for c in meta.columns if c not in (location_col, subject_col)]
+        numeric = [c for c in leftovers if pd.api.types.is_numeric_dtype(meta[c])]
+        if len(numeric) == 1:
+            time_col = numeric[0]
+        elif "id" in meta.columns and "id" not in (location_col, subject_col):
+            time_col = "id"
+        elif leftovers:
+            time_col = leftovers[0]
+    print(f"Link columns: subject={subject_col}  limb={location_col}  time={time_col}")
+    return subject_col, location_col, time_col
+
+
+def link_gap(times):
+    """Gap that connects about 95% of successive windows, matching the published link rate."""
+    gaps = np.diff(np.sort(times.astype(np.float64)))
+    gaps = gaps[gaps > 0]
+    if len(gaps) == 0:
+        return 1.0
+    return float(np.quantile(gaps, 0.95))
+
+
+def smooth_probabilities(probs, radius=2, low_conf=0.45, high_conf=0.60):
+    """Copy a confident neighbor only into an unsure window. Never spread null."""
+    updated = probs.astype(np.float64).copy()
+    pred = updated.argmax(axis=1)
+    conf = updated.max(axis=1)
+    for index in range(len(updated)):
+        if conf[index] >= low_conf:
+            continue
+        start = max(0, index - radius)
+        stop = min(len(updated), index + radius + 1)
+        strong = [
+            other
+            for other in range(start, stop)
+            if other != index and conf[other] >= high_conf and pred[other] != 0
+        ]
+        if not strong:
+            continue
+        votes = pred[strong]
+        classes, counts = np.unique(votes, return_counts=True)
+        if counts.max() < max(1, int(np.ceil(0.6 * len(strong)))):
+            continue
+        mixed = 0.35 * updated[index] + 0.65 * updated[strong].mean(axis=0)
+        mixed /= mixed.sum()
+        updated[index] = mixed
+    return updated.astype(np.float32)
+
+
+def link_probability_matrix(meta, probs):
+    subject_col, location_col, time_col = choose_link_columns(meta)
+    subjects = meta[subject_col].to_numpy()
+    locations = meta[location_col].astype(str).to_numpy()
+    times = pd.to_numeric(meta[time_col], errors="coerce").to_numpy()
+    if np.isnan(times).any():
+        raise ValueError(f"Time column {time_col} is not numeric.")
+
+    linked_probs = probs.copy()
+    n_linked = 0
+    print("\nsubject   windows   chains   linked   median_score_before   median_score_after")
+    for subject in pd.unique(subjects):
+        subject_index = np.flatnonzero(subjects == subject)
+        chains = 0
+        subject_linked = 0
+        for location in pd.unique(locations[subject_index]):
+            idx = subject_index[locations[subject_index] == location]
+            order = np.argsort(times[idx], kind="mergesort")
+            idx = idx[order]
+            local_times = times[idx]
+            gap = link_gap(local_times)
+            start = 0
+            for cursor in range(1, len(idx) + 1):
+                split = cursor == len(idx) or (local_times[cursor] - local_times[cursor - 1]) > gap
+                if not split:
+                    continue
+                block = idx[start:cursor]
+                chains += 1
+                if len(block) > 1:
+                    subject_linked += len(block)
+                    linked_probs[block] = smooth_probabilities(probs[block])
+                start = cursor
+        rate = subject_linked / max(len(subject_index), 1)
+        n_linked += subject_linked
+        before = float(np.median(probs[subject_index].max(axis=1)))
+        after = float(np.median(linked_probs[subject_index].max(axis=1)))
+        print(
+            f"{subject!s:>7}   {len(subject_index):7d}   {chains:6d}   {rate:6.3f}   {before:20.2f}   {after:18.2f}"
+        )
+    print(f"test linked {n_linked / max(len(meta), 1):.3f}")
+    return linked_probs
+
+
+def ensemble_test_probabilities():
+    ckpt_root = find_exp12_checkpoints()
+    print("Checkpoints:", ckpt_root)
+    cached = os.path.join(OUT_DIR, "exp12_test_probs.npy")
+    test_inertial, test_video, test_meta = prepare_test_arrays()
+    if os.path.exists(cached):
+        probs = np.load(cached)
+        if probs.shape == (len(test_inertial), NUM_CLASSES):
+            print("Loaded cached probabilities:", cached)
+            return probs, test_meta
+    fold_probs = []
+    for fold in range(1, N_FOLDS + 1):
+        checkpoint = torch.load(
+            os.path.join(ckpt_root, f"{CHECKPOINT_PREFIX}_fold{fold}.pt"),
+            map_location=DEVICE,
+            weights_only=False,
+        )
+        model = AlignedFusionWEAR().to(DEVICE)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        loader = make_loader(
+            TestDataset(test_inertial, test_video, test_meta, checkpoint["mean"], checkpoint["std"])
+        )
+        fold_probs.append(collect_probabilities(model, loader, has_label=False))
+        print(f"Fold {fold} probs:", fold_probs[-1].shape)
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    probs = np.mean(np.stack(fold_probs, axis=0), axis=0).astype(np.float32)
+    np.save(cached, probs)
+    return probs, test_meta
+
+
+def link_test():
+    """Keep the experiment 12 model. Average probabilities along each subject timeline."""
+    print("=" * 70)
+    print("EXP12 — LINK WINDOWS ON EACH SUBJECT TIMELINE")
+    print("=" * 70)
+    print("Device:", DEVICE)
+    configure_paths()
+    os.makedirs(OUT_DIR, exist_ok=True)
+    probs, test_meta = ensemble_test_probabilities()
+    before = probs.argmax(1)
+    linked = link_probability_matrix(test_meta, probs)
+    predictions = linked.argmax(1)
+    print(f"Predictions changed: {(predictions != before).sum()} of {len(predictions)}")
+    print(f"Null predictions: {(before == 0).sum()} -> {(predictions == 0).sum()}")
+
+    sample_submission = pd.read_csv(SAMPLE_SUB_PATH)
+    id_column = sample_submission.columns[0]
+    target_column = sample_submission.columns[1]
+    id_source = "id" if "id" in test_meta.columns else test_meta.columns[0]
+    submission = (
+        pd.DataFrame({id_column: test_meta[id_source].values, target_column: predictions})
+        .sort_values(id_column)
+        .reset_index(drop=True)
+    )
+    path = os.path.join(OUT_DIR, "exp12_linked_submission.csv")
+    submission.to_csv(path, index=False)
+    submission.to_csv(os.path.join(OUT_DIR, "submission.csv"), index=False)
+    print("Submission:", path, submission.shape)
+
+"""Blend experiment 12 with LightGBM on the same five subject folds.
+
+The 0.687 figure from the EgoInertial writeup is one split on a smaller,
+null-subsampled window set. It is not the score on subjects 22–25.
+This script keeps every overlapping window and scores the blend with
+GroupKFold on sbj_id, the same split experiment 12 used.
+"""
+
+import os
+from collections import defaultdict
+
+import numpy as np
+import pandas as pd
+from sklearn.decomposition import TruncatedSVD
+from sklearn.metrics import classification_report, f1_score
+from sklearn.model_selection import GroupKFold
+
+INERTIAL_HZ = 50
+WINDOW_SIZE = 50
+VIDEO_FRAMES = 15
+SVD_COMPONENTS = 32
+SVD_SAMPLE = 25000
+CHUNK = 2000
+# Experiment 12 OOF macro-F1. Printed so this run can be compared with it.
+EXP12_OOF = 0.6402
+
+# Defaults only. The Kaggle notebook already defines these names above this
+# block, and overwriting them would wipe the label map.
+if not globals().get("TRAIN_VIDEO_DIR"):
+    TRAIN_VIDEO_DIR = ""
+if not globals().get("TRAIN_INERTIAL_DIR"):
+    TRAIN_INERTIAL_DIR = ""
+if not globals().get("OUT_DIR"):
+    OUT_DIR = ""
+if not globals().get("SAMPLE_SUB_PATH"):
+    SAMPLE_SUB_PATH = ""
+if globals().get("DEVICE") is None and "DEVICE" not in globals():
+    DEVICE = None
+if not globals().get("NUM_CLASSES"):
+    NUM_CLASSES = 19
+if not globals().get("N_FOLDS"):
+    N_FOLDS = 5
+if not globals().get("CHECKPOINT_PREFIX"):
+    CHECKPOINT_PREFIX = "exp12_aligned_fusion"
+if not globals().get("LOCATION_MAP"):
+    LOCATION_MAP = {}
+if not globals().get("ID_TO_LABEL"):
+    ID_TO_LABEL = {}
+
+
+def _bind():
+    """Copy experiment 12's configured globals into this module."""
+    try:
+        import exp12_aligned_fusion as exp12
+    except ImportError:
+        return
+    names = (
+        "TRAIN_VIDEO_DIR",
+        "TRAIN_INERTIAL_DIR",
+        "OUT_DIR",
+        "SAMPLE_SUB_PATH",
+        "DEVICE",
+        "NUM_CLASSES",
+        "N_FOLDS",
+        "CHECKPOINT_PREFIX",
+        "LOCATION_MAP",
+        "ID_TO_LABEL",
+        "AlignedFusionWEAR",
+        "MultimodalWEARDataset",
+        "TestDataset",
+        "build_dataset",
+        "collect_probabilities",
+        "configure_paths",
+        "ensemble_test_probabilities",
+        "find_exp12_checkpoints",
+        "location_from_meta",
+        "make_loader",
+        "prepare_test_arrays",
+    )
+    for name in names:
+        globals()[name] = getattr(exp12, name)
+
+
+def inertial_features(x):
+    """Physics summary of one-limb windows. x is (batch, 50, 3)."""
+    x = np.asarray(x, dtype=np.float32)
+    mean = x.mean(axis=1)
+    std = x.std(axis=1)
+    lo = x.min(axis=1)
+    hi = x.max(axis=1)
+    med = np.median(x, axis=1)
+    mag = np.linalg.norm(x, axis=2)
+    mag_stats = np.stack(
+        [
+            mag.mean(axis=1),
+            mag.std(axis=1),
+            mag.max(axis=1),
+            mag.min(axis=1),
+            np.square(mag).mean(axis=1),
+        ],
+        axis=1,
+    )
+    jerk = np.linalg.norm(np.diff(x, axis=1), axis=2)
+    jerk_stats = np.stack([jerk.mean(axis=1), jerk.std(axis=1), jerk.max(axis=1)], axis=1)
+    signs = np.sign(x)
+    signs[signs == 0] = 1
+    zero_cross = (signs[:, 1:, :] * signs[:, :-1, :] < 0).sum(axis=1).astype(np.float32)
+    spectrum = np.abs(np.fft.rfft(x, axis=1))
+    power = np.square(spectrum).mean(axis=1)
+    peak = spectrum.argmax(axis=1).astype(np.float32)
+    return np.concatenate(
+        [mean, std, lo, hi, hi - lo, med, mag_stats, jerk_stats, zero_cross, power, peak],
+        axis=1,
+    ).astype(np.float32)
+
+
+def video_summary(clip):
+    """Mean frame plus four trajectory stats. clip is (batch, frames, 768)."""
+    clip = np.asarray(clip, dtype=np.float32)
+    mean = clip.mean(axis=1)
+    speed = np.linalg.norm(np.diff(clip, axis=1), axis=2).mean(axis=1)
+    spread = clip.std(axis=2)
+    stats = np.stack(
+        [
+            speed,
+            np.linalg.norm(mean, axis=1),
+            spread.mean(axis=1),
+            spread.max(axis=1),
+        ],
+        axis=1,
+    ).astype(np.float32)
+    return mean, stats
+
+
+def _groups_by_file(samples, indices):
+    grouped = defaultdict(list)
+    for index in indices:
+        grouped[samples[int(index)]["sbj_file"]].append(int(index))
+    return grouped
+
+
+def _clips_for_indices(samples, indices, video):
+    """15 frames for each window. Overlapping windows share rows, so unique them."""
+    sample0 = samples[indices[0]]
+    starts = np.array([samples[i]["start_idx"] for i in indices], dtype=np.float64)
+    feat_fps = float(sample0["feat_fps"])
+    n_video = int(video.shape[0])
+    origin = starts * feat_fps / INERTIAL_HZ
+    span = WINDOW_SIZE * feat_fps / INERTIAL_HZ
+    pos = origin[:, None] + (np.arange(VIDEO_FRAMES) + 0.5) * span / VIDEO_FRAMES
+    frame_idx = np.floor(pos).astype(np.int64)
+    np.clip(frame_idx, 0, max(n_video - 1, 0), out=frame_idx)
+    flat = frame_idx.reshape(-1)
+    unique, inverse = np.unique(flat, return_inverse=True)
+    rows = np.asarray(video[unique], dtype=np.float32)
+    return rows[inverse].reshape(len(indices), VIDEO_FRAMES, 768)
+
+
+def base_features(samples):
+    """Inertial summaries, limb id, and video stats. Same for every fold."""
+    n = len(samples)
+    base_path = os.path.join(OUT_DIR, "exp12_lgbm_base.npy")
+    means_path = os.path.join(OUT_DIR, "exp12_video_means.f16")
+    means_bytes = n * 768 * np.dtype(np.float16).itemsize
+    if (
+        os.path.exists(base_path)
+        and os.path.exists(means_path)
+        and os.path.getsize(means_path) == means_bytes
+    ):
+        base = np.load(base_path)
+        if base.shape == (n, 40):
+            means = np.memmap(means_path, dtype=np.float16, mode="r", shape=(n, 768))
+            print("Loaded cached window features:", base_path)
+            return base, means
+
+    inertial = np.empty((n, 35), dtype=np.float32)
+    location = np.empty((n, 1), dtype=np.float32)
+    stats = np.empty((n, 4), dtype=np.float32)
+    means = np.memmap(means_path, dtype=np.float16, mode="w+", shape=(n, 768))
+    grouped = _groups_by_file(samples, range(n))
+    print(f"Building window features for {len(grouped)} sessions")
+    for file_i, (sbj_file, indices) in enumerate(grouped.items(), start=1):
+        video = np.load(os.path.join(TRAIN_VIDEO_DIR, sbj_file + ".npy"), mmap_mode="r")
+        if video.ndim != 2 or video.shape[1] != 768:
+            raise RuntimeError(f"Expected video (time, 768) in {sbj_file}, got {video.shape}")
+        for start in range(0, len(indices), CHUNK):
+            chunk = indices[start : start + CHUNK]
+            windows = np.stack([samples[i]["x"] for i in chunk]).astype(np.float32)
+            inertial[chunk] = inertial_features(windows)
+            location[chunk, 0] = [LOCATION_MAP[samples[i]["location"]] for i in chunk]
+            mean, stats[chunk] = video_summary(_clips_for_indices(samples, chunk, video))
+            means[chunk] = mean
+        del video
+        print(f"  features {file_i:2d}/{len(grouped)}  {sbj_file}  windows={len(indices)}")
+    means.flush()
+    base = np.concatenate([inertial, location, stats], axis=1)
+    np.save(base_path, base)
+    return base, means
+
+
+def fit_fold_svd(means, train_idx, fold):
+    rng = np.random.default_rng(42 + fold)
+    take = min(SVD_SAMPLE, len(train_idx))
+    chosen = rng.choice(np.asarray(train_idx), size=take, replace=False)
+    matrix = np.asarray(means[chosen], dtype=np.float32)
+    svd = TruncatedSVD(n_components=SVD_COMPONENTS, random_state=42)
+    svd.fit(matrix)
+    print(
+        f"  SVD fit on {matrix.shape[0]} train means, "
+        f"explained {svd.explained_variance_ratio_.sum():.3f}"
+    )
+    return svd
+
+
+def fold_matrix(base, means, indices, svd):
+    indices = np.asarray(indices)
+    projected = np.empty((len(indices), SVD_COMPONENTS), dtype=np.float32)
+    for start in range(0, len(indices), 20000):
+        stop = min(start + 20000, len(indices))
+        block = np.asarray(means[indices[start:stop]], dtype=np.float32)
+        projected[start:stop] = svd.transform(block)
+    return np.concatenate([base[indices], projected], axis=1)
+
+
+def choose_blend_weight(neural, trees, y):
+    """Weight on the neural net. 1.0 means LightGBM is unused.
+
+    Ties go to the higher neural weight. The grid is the same OOF the
+    score is reported on, so the winning number is slightly optimistic.
+    """
+    best_w = 1.0
+    best_f1 = -1.0
+    rows = []
+    for weight in np.linspace(0.0, 1.0, 11):
+        pred = (weight * neural + (1.0 - weight) * trees).argmax(axis=1)
+        score = float(f1_score(y, pred, average="macro", zero_division=0))
+        rows.append((float(weight), score))
+        if score >= best_f1 - 1e-12:
+            best_f1 = score
+            best_w = float(weight)
+    return best_w, best_f1, rows
+
+
+def _align_proba(model, features, n_classes):
+    proba = model.predict_proba(features)
+    classes = np.asarray(model.classes_)
+    if proba.shape[1] == n_classes and np.array_equal(classes, np.arange(n_classes)):
+        return proba.astype(np.float32)
+    full = np.zeros((len(features), n_classes), dtype=np.float32)
+    for column, class_id in enumerate(classes):
+        full[:, int(class_id)] = proba[:, column]
+    return full
+
+
+def _write_submission(test_meta, predictions, path):
+    sample_submission = pd.read_csv(SAMPLE_SUB_PATH)
+    id_column = sample_submission.columns[0]
+    target_column = sample_submission.columns[1]
+    id_source = "id" if "id" in test_meta.columns else test_meta.columns[0]
+    submission = (
+        pd.DataFrame({id_column: test_meta[id_source].values, target_column: predictions})
+        .sort_values(id_column)
+        .reset_index(drop=True)
+    )
+    submission.to_csv(path, index=False)
+    return submission
+
+
+def blend_main():
+    import lightgbm as lgb
+    import torch
+
+    _bind()
+    print("=" * 70)
+    print("EXP12 + LIGHTGBM BLEND")
+    print("Same five subject folds. 0.687 is not the expected test score.")
+    print("=" * 70)
+    print("Device:", DEVICE)
+    configure_paths()
+    _bind()
+    os.makedirs(OUT_DIR, exist_ok=True)
+    ckpt_root = find_exp12_checkpoints()
+    print("Checkpoints:", ckpt_root)
+
+    samples = build_dataset(TRAIN_INERTIAL_DIR)
+    groups = np.array([s["sbj_id"] for s in samples])
+    y_all = np.array([s["y"] for s in samples])
+    base, means = base_features(samples)
+    if base.shape != (len(samples), 40):
+        raise RuntimeError(f"Expected 40 base features, got {base.shape}")
+
+    gkf = GroupKFold(n_splits=N_FOLDS)
+    neural_oof = np.zeros((len(samples), NUM_CLASSES), dtype=np.float32)
+    tree_oof = np.zeros((len(samples), NUM_CLASSES), dtype=np.float32)
+    fold_models = []
+
+    cached_neural = os.path.join(OUT_DIR, "exp12_neural_oof.npy")
+    have_neural = False
+    if os.path.exists(cached_neural):
+        loaded = np.load(cached_neural)
+        if loaded.shape == neural_oof.shape:
+            neural_oof = loaded
+            have_neural = True
+            print("Loaded cached neural OOF:", cached_neural)
+
+    for fold, (train_idx, val_idx) in enumerate(gkf.split(samples, y_all, groups), start=1):
+        print(f"\n{'=' * 70}\nFOLD {fold}  train={len(train_idx)}  val={len(val_idx)}\n{'=' * 70}")
+        if not have_neural:
+            checkpoint = torch.load(
+                os.path.join(ckpt_root, f"{CHECKPOINT_PREFIX}_fold{fold}.pt"),
+                map_location=DEVICE,
+                weights_only=False,
+            )
+            model = AlignedFusionWEAR().to(DEVICE)
+            model.load_state_dict(checkpoint["model_state_dict"])
+            loader = make_loader(
+                MultimodalWEARDataset(
+                    [samples[i] for i in val_idx],
+                    checkpoint["mean"],
+                    checkpoint["std"],
+                    augment=False,
+                )
+            )
+            neural_oof[val_idx] = collect_probabilities(model, loader, has_label=True)
+            del model
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        neural_fold = f1_score(
+            y_all[val_idx], neural_oof[val_idx].argmax(1), average="macro", zero_division=0
+        )
+        print(f"  neural val macro-F1 {neural_fold:.4f}")
+
+        svd = fit_fold_svd(means, train_idx, fold)
+        x_train = fold_matrix(base, means, train_idx, svd)
+        x_val = fold_matrix(base, means, val_idx, svd)
+        tree = lgb.LGBMClassifier(
+            n_estimators=400,
+            learning_rate=0.05,
+            num_leaves=63,
+            subsample=0.8,
+            subsample_freq=1,
+            colsample_bytree=0.8,
+            class_weight="balanced",
+            objective="multiclass",
+            num_class=NUM_CLASSES,
+            random_state=42,
+            n_jobs=-1,
+            verbosity=-1,
+        )
+        callbacks = [
+            lgb.early_stopping(30, verbose=False),
+            lgb.log_evaluation(period=0),
+        ]
+        # eval_set still works, but current LightGBM prefers eval_X / eval_y.
+        # Kaggle images that predate that argument keep the older call.
+        if "eval_X" in tree.fit.__code__.co_varnames:
+            tree.fit(
+                x_train,
+                y_all[train_idx],
+                eval_X=x_val,
+                eval_y=y_all[val_idx],
+                callbacks=callbacks,
+            )
+        else:
+            tree.fit(
+                x_train,
+                y_all[train_idx],
+                eval_set=[(x_val, y_all[val_idx])],
+                callbacks=callbacks,
+            )
+        tree_oof[val_idx] = _align_proba(tree, x_val, NUM_CLASSES)
+        tree_f1 = f1_score(
+            y_all[val_idx], tree_oof[val_idx].argmax(1), average="macro", zero_division=0
+        )
+        print(
+            f"  LightGBM val macro-F1 {tree_f1:.4f}  "
+            f"trees={getattr(tree, 'best_iteration_', tree.n_estimators)}"
+        )
+        fold_models.append((svd, tree))
+        del x_train, x_val
+
+    if not have_neural:
+        np.save(cached_neural, neural_oof)
+
+    neural_f1 = float(f1_score(y_all, neural_oof.argmax(1), average="macro", zero_division=0))
+    tree_f1 = float(f1_score(y_all, tree_oof.argmax(1), average="macro", zero_division=0))
+    weight, blend_f1, rows = choose_blend_weight(neural_oof, tree_oof, y_all)
+    print("\nneural weight   OOF macro-F1")
+    for w, score in rows:
+        mark = "  <--" if abs(w - weight) < 1e-9 else ""
+        print(f"{w:13.1f}   {score:.4f}{mark}")
+    print(f"\nNeural only OOF macro-F1: {neural_f1:.4f}  (experiment 12 reference {EXP12_OOF:.4f})")
+    print(f"LightGBM only OOF macro-F1: {tree_f1:.4f}")
+    print(f"Blend OOF macro-F1: {blend_f1:.4f}  at neural weight {weight:.1f}")
+    print("This number is five subject folds. It is not 0.687, and it is not subjects 22–25.")
+    print("The blend weight was picked on this same OOF, so a gain under about 0.01 is noise.")
+    blended = weight * neural_oof + (1.0 - weight) * tree_oof
+    print(
+        classification_report(
+            y_all,
+            blended.argmax(1),
+            labels=np.arange(NUM_CLASSES),
+            target_names=[ID_TO_LABEL[i] for i in range(NUM_CLASSES)],
+            digits=4,
+            zero_division=0,
+        )
+    )
+
+    improved = weight < 0.999 and blend_f1 > neural_f1 + 1e-4
+    print(f"\n{'=' * 70}\nTEST\n{'=' * 70}")
+    neural_test, test_meta = ensemble_test_probabilities()
+    test_inertial, test_video, _meta = prepare_test_arrays()
+    locations = np.array(
+        [LOCATION_MAP[location_from_meta(test_meta, i)] for i in range(len(test_meta))],
+        dtype=np.float32,
+    ).reshape(-1, 1)
+    test_means, test_stats = video_summary(test_video)
+    test_base = np.concatenate(
+        [inertial_features(test_inertial), locations, test_stats], axis=1
+    )
+
+    tree_folds = []
+    for svd, tree in fold_models:
+        test_x = np.concatenate(
+            [test_base, svd.transform(test_means).astype(np.float32)], axis=1
+        )
+        tree_folds.append(_align_proba(tree, test_x, NUM_CLASSES))
+    tree_test = np.mean(np.stack(tree_folds, axis=0), axis=0)
+    test_probs = weight * neural_test + (1.0 - weight) * tree_test
+    predictions = test_probs.argmax(1)
+    counts = np.bincount(predictions, minlength=NUM_CLASSES)
+    print(f"Test null predictions: {int(counts[0])} of {len(predictions)}")
+    if counts[0] / max(len(predictions), 1) < 0.25:
+        print(
+            "Caution: test null is under 25%. Training windows are about 40% null. "
+            "A low null count was how the other writeup missed the test prior."
+        )
+    print(
+        "Class counts:\n"
+        + "\n".join(f"  {i:2d} {ID_TO_LABEL[i]:32s} {int(c):5d}" for i, c in enumerate(counts))
+    )
+
+    path = os.path.join(OUT_DIR, "exp12_lgbm_blend_submission.csv")
+    submission = _write_submission(test_meta, predictions, path)
+    print("Wrote", path, submission.shape)
+    if improved:
+        submission.to_csv(os.path.join(OUT_DIR, "submission.csv"), index=False)
+        print(
+            f"SUBMIT this file. Blend OOF {blend_f1:.4f} beat neural OOF {neural_f1:.4f}."
+        )
+    else:
+        print(
+            "KEEP the linked submission (null 6430 -> 5920). "
+            f"Blend OOF {blend_f1:.4f} did not beat neural OOF {neural_f1:.4f}. "
+            "Do not upload this csv."
+        )
+    return blend_f1, neural_f1, weight
+
+blend_main()
+
+##### CELL 5 [markdown]
+```text
+limb (50 × 4)                         video (15 × 768)
+     │                                      │
+     ▼                                      ▼
+1D residual CNN                      linear 768 → 192
+mean + std + max                     + position embedding
+h_I ∈ R^384                          2 transformer layers
+     │                                      │
+     │              cross-attention         │
+     └──────── query ◄──── 15 tokens ───────┘
+                    h_A ∈ R^192
+                         │
+              concat h_I, h_A, limb embedding
+                         │
+                    592 → 256 → 128
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+    fused head      inertial head    video head
+     128 → 19         384 → 19        192 → 19
+         └───────────────┼───────────────┘
+                    average softmax
+                         │
+                    19-class label
+```
+##### CELL 6 [markdown]
+Each window contains 50 acceleration samples. A fourth channel is the acceleration magnitude:
+
+$$ a_m(t)=\sqrt{a_x(t)^2+a_y(t)^2+a_z(t)^2} $$
+
+The input tensor is shaped:
+
+$$ 4 \times 50 $$
+
+Each of the four channels is normalized using the mean and standard deviation calculated from the training subjects of that fold.
+
+Inertial tower. GroupNorm uses 8 groups. Each residual block is two kernel-5 convolutions plus a 1×1 skip when the width or the stride changes.
+##### CELL 7 [markdown]
+| **Stage**         | **Channels** | **Stride** | **Length** |
+|-------------------|--------------|------------|------------|
+| Stem, kernel 7    | 4 → 32       | 1          | 50         |
+| Block 1, kernel 5 | 32 → 32      | 1          | 50         |
+| Block 2, kernel 5 | 32 → 64      | 2          | 25         |
+| Block 3, kernel 5 | 64 → 128     | 2          | 12         |
+##### CELL 8 [markdown]
+The map `h` is `128 \times 12`. It is pooled over time and concatenated:
+
+$$
+h_I =
+\left[
+\operatorname{mean}_t h,\;
+\operatorname{std}_t h,\;
+\max_t h
+\right]
+\in \mathbb{R}^{384}.
+$$
+
+### Video tower
+
+Each frame is projected from 768 to 192, then LayerNorm, GELU, and dropout 0.1. A learned position vector `p_k` is added:
+
+$$
+z_k = Wv_k + p_k.
+$$
+
+Two pre-norm transformer layers follow: 4 heads, feed-forward width 384, dropout 0.1. The video head uses the mean of the 15 tokens:
+
+$$
+h_V \in \mathbb{R}^{192}.
+$$
+
+### Cross-attention
+
+One query comes from the limb. Keys and values are the 15 video tokens. The scale is `1/\sqrt{192}`.
+
+$$
+q = W_q h_I
+$$
+
+$$
+\alpha =
+\operatorname{softmax}
+\left(
+\frac{qK^\top}{\sqrt{192}}
+\right)
+$$
+
+$$
+h_A = \alpha V.
+$$
+
+### Fusion
+
+The limb id is an embedding of size 16, one vector for each of the four limbs.
+
+$$
+u =
+[h_I,\;h_A,\;e_{\text{limb}}]
+\in \mathbb{R}^{592}.
+$$
+
+Then:
+
+$$
+592 \rightarrow 256
+$$
+
+LayerNorm, GELU, dropout 0.3, followed by:
+
+$$
+256 \rightarrow 128
+$$
+
+GELU, dropout 0.2.
+
+### Three heads
+
+- **Fused:** `128 \rightarrow 19`, on the fused vector.
+- **Inertial:** `384 \rightarrow 19`, on `h_I` only.
+- **Video:** `192 \rightarrow 19`, on `h_V` only.
+
+Training loss is
+
+At inference the three probability vectors are averaged, and the class is the argmax. That averaged probability is what the LightGBM blend later mixes at weight 0.5.
+##### CELL 9 [markdown]
+# **Result and Submmission**
+##### CELL 10 [markdown]
+The weight table is a sweep of
+
+$$
+p = w\,p_{\text{neural}} + (1-w)\,p_{\text{LightGBM}}.
+$$
+
+`w` is the share given to experiment 12. `w = 1.0` is the neural net alone, out-of-fold macro-F1 `0.6405`, which matches the experiment 12 reference `0.6402`. `w = 0.0` is LightGBM alone, `0.6147`. The score rises as the two are mixed and peaks at `w = 0.5`, `0.6830`. The neighbor `w = 0.6` is `0.6827`, so the peak is flat, not a one-point accident. The arrow marks `0.5` as the weight that was kept.
+
+“Five subject folds” means this `0.6830` is measured on subjects 0–21, with each subject held out in turn. It is not a score on test subjects 22–25. The line about a gain under `0.01` being noise is there because the weight was chosen on this same out-of-fold set. The gain from `0.6405` to `0.6830` is about `0.043`, so it clears that line.
+
+The table under that is the classification report of the `0.5` mix on all `554,528` training windows. Precision, recall, and F1 are per class. Support is how many windows had that label. Null has F1 `0.776` on `220,456` windows. Jogging is about `0.79–0.85`. Hamstrings is `0.761` and lumbar rotation is `0.852`. The weak holds are triceps `0.539`, lunging `0.452`, and shoulders `0.365`. Accuracy `0.7245` is the fraction of windows correct. Macro avg `0.6830` is the number that matters: the unweighted mean of the 19 F1 scores. Weighted avg `0.7172` is pulled up by null because null is common.
+
+The test block is subjects 22–25, `12,234` windows. The cached neural probabilities were loaded, the five LightGBM models were averaged with them at weight `0.5`, and the class was the argmax. Null is predicted on `6,808` of those windows, about `56%`. The other counts are the remaining 18 classes. The csv written is `exp12_lgbm_blend_submission.csv`, `12,234` rows and 2 columns.
+
+The last line is three numbers: blend out-of-fold F1 `0.68295` (printed as `0.6830`), neural out-of-fold F1 `0.6405`, and the chosen weight `0.5`. “SUBMIT this file” is that comparison: `0.6830` beat `0.6405`.
+##### CELL 11 [code]

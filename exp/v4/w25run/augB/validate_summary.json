@@ -1,0 +1,103 @@
+{
+ "matched_nonexact": 1984,
+ "detect_acc_twins": 0.9998365211705085,
+ "detect_acc_twins_limb_agnostic": 0.9969756416544058,
+ "fp_clean2026": 37,
+ "aug_fraction": 0.1625592610756907,
+ "aug_fraction_by_sbj_limb": {
+  "22_left_arm": 0.25,
+  "22_left_leg": 0.0,
+  "22_right_arm": 0.4,
+  "22_right_leg": 0.0,
+  "23_left_arm": 0.25,
+  "23_left_leg": 0.0,
+  "23_right_arm": 0.4012,
+  "23_right_leg": 0.0,
+  "24_left_arm": 0.2501,
+  "24_left_leg": 0.0,
+  "24_right_arm": 0.4,
+  "24_right_leg": 0.0,
+  "25_left_arm": 0.2497,
+  "25_left_leg": 0.0,
+  "25_right_arm": 0.3997,
+  "25_right_leg": 0.0
+ },
+ "kind_rates": {
+  "left_arm": {
+   "L": 0.25,
+   "R0": 0.0,
+   "R1": 0.0
+  },
+  "left_leg": {
+   "L": 0.0,
+   "R0": 0.0,
+   "R1": 0.0
+  },
+  "right_arm": {
+   "L": 0.0,
+   "R0": 0.2003,
+   "R1": 0.2
+  },
+  "right_leg": {
+   "L": 0.0,
+   "R0": 0.0,
+   "R1": 0.0
+  }
+ },
+ "restore_L_edge_maxerr": 4.76837158203125e-07,
+ "restore_L_rms": 0.006384721957147121,
+ "restore_R0_edge_maxerr": 4.76837158203125e-07,
+ "restore_R0_rms": 2.995812664607911e-08,
+ "restore_R1_edge_maxerr": 1.3828277587890625e-05,
+ "restore_R1_rms": 0.005960920825600624,
+ "model_residuals": {
+  "L_linear3x3+off_plain_median": 0.41786,
+  "L_linear3x3+off_warped_denoised_median": 1.529750559090359e-07,
+  "L_scale_plain_median": 0.48317,
+  "L_scale_warped_denoised_median": 1.584173688523156e-07,
+  "L_axis-scale_plain_median": 0.47937,
+  "L_axis-scale_warped_denoised_median": 1.5783221511719285e-07,
+  "L_signed-perm_plain_median": 0.49071,
+  "L_signed-perm_warped_denoised_median": 1.6055214520692905e-07,
+  "L_orthogonal(Procrustes)_plain_median": 0.47722,
+  "L_orthogonal(Procrustes)_warped_denoised_median": 1.590689956202193e-07,
+  "L_orthogonal+offset_plain_median": 0.46702,
+  "L_orthogonal+offset_warped_denoised_median": 1.5535125250608041e-07,
+  "R0_linear3x3+off_plain_median": 0.64694,
+  "R0_linear3x3+off_warped_denoised_median": 1.7394564864910033e-07,
+  "R0_scale_plain_median": 3.44949,
+  "R0_scale_warped_denoised_median": 4.7606046893281215,
+  "R0_axis-scale_plain_median": 1.13013,
+  "R0_axis-scale_warped_denoised_median": 1.569737013741397,
+  "R0_signed-perm_plain_median": 1.45502,
+  "R0_signed-perm_warped_denoised_median": 2.0246951787007084,
+  "R0_orthogonal(Procrustes)_plain_median": 0.66191,
+  "R0_orthogonal(Procrustes)_warped_denoised_median": 1.8250840238827785e-07,
+  "R0_orthogonal+offset_plain_median": 0.65571,
+  "R0_orthogonal+offset_warped_denoised_median": 1.7978938731144885e-07,
+  "R1_linear3x3+off_plain_median": 0.76109,
+  "R1_linear3x3+off_warped_denoised_median": 1.7107705972228929e-07,
+  "R1_scale_plain_median": 2.05947,
+  "R1_scale_warped_denoised_median": 3.3884011673598176,
+  "R1_axis-scale_plain_median": 1.06244,
+  "R1_axis-scale_warped_denoised_median": 1.26965217800371,
+  "R1_signed-perm_plain_median": 0.80974,
+  "R1_signed-perm_warped_denoised_median": 1.8184912842330222e-07,
+  "R1_orthogonal(Procrustes)_plain_median": 0.80157,
+  "R1_orthogonal(Procrustes)_warped_denoised_median": 1.8170031324043633e-07,
+  "R1_orthogonal+offset_plain_median": 0.79342,
+  "R1_orthogonal+offset_warped_denoised_median": 1.75902403985471e-07
+ },
+ "transform_summary": {
+  "left_arm L (25.0%)": "b = -warpL(a): full sign inversion (-I, det -1) + fixed time warp (tau-p in [-1.42, 3.41] samples, local rate 0.00-1.61, ends fixed, b[0]==b[1]); no noise, no scaling",
+  "right_arm R0 (20.0%)": "b = a @ M0 + N0: fixed orthogonal M0, det -1 (= -1 x a 116.0 deg rotation), fixed additive pattern N0 (std [0.106, 0.095, 0.096] g, mean [0.019, 0.004, 0.038])",
+  "right_arm R1 (20.0%)": "b = warpR(a) @ P1 + N1: P1 = -(swap x,y) (det +1), fixed time warp (tau-p in [-0.95, 3.27]), fixed additive pattern N1 (std [0.105, 0.123, 0.153] g)",
+  "legs": "never augmented",
+  "scale": "none (all singular values exactly 1)",
+  "random_per_row": "none: every parameter is identical for all rows of a kind; only which rows get augmented is random (exact counts: round(rate*n) per subject-limb)"
+ },
+ "fp_clean2026_limb_aware": 2,
+ "replaceable_fraction": 0.24940289126335638,
+ "n_aug_rows": 7955,
+ "n_aug_rows_with_twin": 1984
+}

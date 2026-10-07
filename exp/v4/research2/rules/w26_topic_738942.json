@@ -1,0 +1,19 @@
+{
+ "topic": {
+  "id": 738942,
+  "title": "Train VideoMAE embeddings (train/*.npy) missing in latest dataset version",
+  "topicUrl": "/competitions/3rd-wear-dataset-challenge-hasca-2026/discussion/738942",
+  "postDate": "2026-09-02T07:38:06.304Z",
+  "lastCommentPostDate": "2026-09-02T07:38:06.303Z"
+ },
+ "messages": {
+  "messages": [
+   {
+    "id": 3519779,
+    "postDate": "2026-09-02T07:38:06.303Z",
+    "content": "<p>Hi <a href=\"https://www.kaggle.com/Marius\" target=\"_blank\">@Marius</a> Bock,</p>\n<p>I noticed that the train VideoMAE embeddings (<code>train/*.npy</code> - 768×15 paired 1:1 by stem) appear to be missing from the latest dataset release, while <code>test/test_videomae_data.npy</code> (1.05GB) and <code>train/inertial_feat/sbj_*.csv</code> (22 files) are present.</p>\n<p>Context:\nWe are currently processing ~62k windows using Pooled 1536→192 / Inception+Transformer (0.83M parameters) based on the [TS/Emb] 3WDC structure from 2026-08-30.</p>\n<p>Could you clarify:</p>\n<ol>\n<li>Is the <code>train/*.npy</code> VideoMAE embedding set intended to be re-uploaded or generated via a script?</li>\n<li>If generated via script, is there an official baseline script/checkpoint for feature extraction consistency?</li>\n<li>Are the test set embeddings formatted identically to the expected training embeddings?</li>\n</ol>\n<p>Thanks!</p>",
+    "rawMarkdown": "Hi @Marius Bock,\n\nI noticed that the train VideoMAE embeddings (`train/*.npy` - 768×15 paired 1:1 by stem) appear to be missing from the latest dataset release, while `test/test_videomae_data.npy` (1.05GB) and `train/inertial_feat/sbj_*.csv` (22 files) are present.\n\nContext:\nWe are currently processing ~62k windows using Pooled 1536→192 / Inception+Transformer (0.83M parameters) based on the [TS/Emb] 3WDC structure from 2026-08-30.\n\nCould you clarify:\n1. Is the `train/*.npy` VideoMAE embedding set intended to be re-uploaded or generated via a script?\n2. If generated via script, is there an official baseline script/checkpoint for feature extraction consistency?\n3. Are the test set embeddings formatted identically to the expected training embeddings?\n\nThanks!"
+   }
+  ]
+ }
+}

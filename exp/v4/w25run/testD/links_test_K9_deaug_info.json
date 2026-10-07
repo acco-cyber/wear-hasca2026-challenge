@@ -1,0 +1,36 @@
+{
+ "fit": "K9",
+ "mode": "deaug",
+ "rates": [
+  0.801509186351706,
+  1.0,
+  1.0,
+  1.0
+ ],
+ "oof_source": "this run's nested OOF (links_oof_K9_deaug.npz)",
+ "selfcheck_exact_new": 0.733096590909091,
+ "selfcheck_exact_own": 0.6464488636363637,
+ "selfcheck_exact_sim": 0.7201704545454546,
+ "selfcheck_exact_stage1": 0.7079545454545455,
+ "test_changed_share": 0.2785679254536538,
+ "same_limb_share_new": 0.27441586821314506,
+ "same_limb_share_own": 0.2752020416843896,
+ "chain_agree_new": 0.6438679245283019,
+ "chain_agree_new_n": 2968,
+ "chain_agree_own": 0.5552523874488404,
+ "chain_agree_own_n": 2932,
+ "linked_new": 0.9725355566454145,
+ "perturbed_changed": 0.13808122562413885,
+ "changed_by_limb": {
+  "right_arm": 0.26443569553805774,
+  "right_leg": 0.2908496732026144,
+  "left_leg": 0.28292046936114734,
+  "left_arm": 0.275997383911053
+ },
+ "oof_changed_by_limb": {
+  "right_arm": 0.24855957593915648,
+  "right_leg": 0.2516451100521897,
+  "left_leg": 0.26126126126126126,
+  "left_arm": 0.25823233816139524
+ }
+}

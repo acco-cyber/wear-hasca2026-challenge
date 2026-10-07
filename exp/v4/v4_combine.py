@@ -31,6 +31,16 @@ def load_part(spec):
     return f
 
 
+COUNT_LOG = False      # --count_log: the ridge predicts log(count) (nested OOF 0.9319 -> 0.9325 pre-refiner, 5/5 folds)
+
+
+def _fit_counts(Xtr, ttr, Xte):
+    if not COUNT_LOG:
+        return fit_counts(Xtr, ttr, Xte)
+    reg = (ttr > 55) & (ttr < 150); mu, sd = Xtr[reg].mean(0), Xtr[reg].std(0) + 1e-6
+    return np.clip(np.exp(V.ridge_cv((Xtr[reg] - mu) / sd, np.log(ttr[reg]), (Xte - mu) / sd)), 70, 135)
+
+
 def counts_for(mats_o, mats_t, y, sbj, tsbj, fold_of, onehot=False):
     X, key = profile_features(mats_o, sbj, TRAIN_SETS); Xt, kt = profile_features(mats_t, tsbj, {})
     if onehot:
@@ -38,8 +48,8 @@ def counts_for(mats_o, mats_t, y, sbj, tsbj, fold_of, onehot=False):
     true = np.array([(y[sbj == s] == c).sum() / TRAIN_SETS.get(int(s), 1) for s, c in key], np.float64)
     kf = np.array([fold_of[int(s)] for s, _ in key]); cnt = np.zeros(len(true))
     for f_ in range(FOLDS):
-        cnt[kf == f_] = fit_counts(X[kf != f_], true[kf != f_], X[kf == f_])
-    return cnt, fit_counts(X, true, Xt), key, kt, true
+        cnt[kf == f_] = _fit_counts(X[kf != f_], true[kf != f_], X[kf == f_])
+    return cnt, _fit_counts(X, true, Xt), key, kt, true
 
 
 def main():
@@ -52,7 +62,10 @@ def main():
     ap.add_argument("--sharpen", type=float, default=0.0, help="override CFG sharpen_T for the fused finish")
     ap.add_argument("--redecode", type=int, default=0, help="extra rounds: re-decode every full fit with the fused counts")
     ap.add_argument("--whiten", type=float, default=0.5, help="per-subject whitening power used by --redecode (0 = raw)")
+    ap.add_argument("--count_log", action="store_true", help="count ridge on log(count)")
     a = ap.parse_args()
+    global COUNT_LOG
+    COUNT_LOG = a.count_log
     if a.sharpen > 0:
         V.CFG["sharpen_T"] = a.sharpen
     fits = [load_part(s) for s in a.parts.split(",")]

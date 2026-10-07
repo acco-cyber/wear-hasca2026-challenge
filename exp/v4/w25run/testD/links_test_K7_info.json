@@ -1,0 +1,24 @@
+{
+ "fit": "K7",
+ "mode": "spec",
+ "rates": [
+  1.0,
+  1.0,
+  1.0,
+  1.0
+ ],
+ "oof_source": "research2 links_lgb_a1.npz",
+ "selfcheck_exact_new": 0.7323863636363637,
+ "selfcheck_exact_own": 0.6431818181818182,
+ "selfcheck_exact_sim": 0.7323863636363637,
+ "selfcheck_exact_stage1": 0.7085227272727272,
+ "test_changed_share": 0.2574791564492398,
+ "same_limb_share_new": 0.2781429052915403,
+ "same_limb_share_own": 0.274815003827507,
+ "chain_agree_new": 0.5895101863892501,
+ "chain_agree_new_n": 2307,
+ "chain_agree_own": 0.5015730337078652,
+ "chain_agree_own_n": 2225,
+ "linked_new": 0.9700833742030407,
+ "perturbed_changed": 0.1561456362829585
+}

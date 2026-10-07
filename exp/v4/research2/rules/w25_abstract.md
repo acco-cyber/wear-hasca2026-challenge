@@ -1,0 +1,5 @@
+The **2nd WEAR Dataset Challenge** is a Human Activity Recognition prediction challenge based on the inertial data of the [WEAR dataset](http://mariusbock.github.io/wear/). The challenge will be again part of the [HASCA Workshop](http://hasca2025.hasc.jp/) at [UbiComp/ ISWC 2025](https://www.ubicomp.org/ubicomp-iswc-2025/).
+
+This year's challenge will be all about robustness and generalization! We curated a new test dataset with four new participants. 
+
+*But there is a twist!* This year we only provide you with random, sensor-specific 1-second sliding windows of each of the four test participants. Oh yeah, and we applied some random augmentations to the data that can occur due to different wearing conditions. This means that you will have to rely on your model's ability to generalize to new participants **and** deal with the noise and uncertainty that comes with real-world data.

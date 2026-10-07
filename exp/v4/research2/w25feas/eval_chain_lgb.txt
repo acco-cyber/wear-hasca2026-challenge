@@ -1,0 +1,27 @@
+﻿cost lgb: 22 subjects, 69302 true links per limb
+  right_arm: exact 0.773 | same-label succ 0.880 | true succ ranked 1st nan | mean correct run 16.2 tiles (tile-weighted)
+  right_leg: exact 0.578 | same-label succ 0.750 | true succ ranked 1st nan | mean correct run 9.3 tiles (tile-weighted)
+  left_leg : exact 0.558 | same-label succ 0.743 | true succ ranked 1st nan | mean correct run 8.5 tiles (tile-weighted)
+  left_arm : exact 0.773 | same-label succ 0.878 | true succ ranked 1st nan | mean correct run 32.0 tiles (tile-weighted)
+  all limbs: exact 0.670; >=1 of 4 limbs exact 0.975; all 4 exact 0.254
+  by activity (exact, mean over limbs | arms | legs | share):
+    null        0.721 | 0.817 | 0.625 | 0.397
+    jogging     0.475 | 0.721 | 0.229 | 0.036
+    jog-rot     0.495 | 0.767 | 0.222 | 0.032
+    jog-skip    0.536 | 0.774 | 0.299 | 0.033
+    jog-side    0.531 | 0.790 | 0.272 | 0.036
+    jog-butt    0.402 | 0.532 | 0.272 | 0.031
+    str-tric    0.766 | 0.869 | 0.663 | 0.034
+    str-lunge   0.684 | 0.852 | 0.515 | 0.035
+    str-shoul   0.787 | 0.930 | 0.644 | 0.033
+    str-hams    0.850 | 0.844 | 0.856 | 0.033
+    str-lumb    0.829 | 0.713 | 0.946 | 0.034
+    push-ups    0.616 | 0.448 | 0.784 | 0.031
+    push-ups-c  0.611 | 0.480 | 0.742 | 0.033
+    sit-ups     0.794 | 0.926 | 0.663 | 0.035
+    sit-ups-c   0.766 | 0.868 | 0.664 | 0.035
+    burpees     0.456 | 0.544 | 0.369 | 0.034
+    lunges      0.643 | 0.889 | 0.396 | 0.034
+    lunges-c    0.647 | 0.901 | 0.393 | 0.035
+    bench-dips  0.552 | 0.461 | 0.644 | 0.030
+  by subject: 0:0.651 1:0.559 2:0.644 3:0.725 4:0.687 5:0.716 6:0.690 7:0.663 8:0.676 9:0.648 10:0.709 11:0.671 12:0.741 13:0.676 14:0.645 15:0.691 16:0.546 17:0.650 18:0.757 19:0.738 20:0.596 21:0.708
