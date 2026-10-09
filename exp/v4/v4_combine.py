@@ -41,8 +41,11 @@ def _fit_counts(Xtr, ttr, Xte):
     return np.clip(np.exp(V.ridge_cv((Xtr[reg] - mu) / sd, np.log(ttr[reg]), (Xte - mu) / sd)), 70, 135)
 
 
-def counts_for(mats_o, mats_t, y, sbj, tsbj, fold_of, onehot=False):
+def counts_for(mats_o, mats_t, y, sbj, tsbj, fold_of, onehot=False, xc=None):
     X, key = profile_features(mats_o, sbj, TRAIN_SETS); Xt, kt = profile_features(mats_t, tsbj, {})
+    if xc is not None:                       # extra (subject, class) count features in profile_features key order
+        assert len(xc["oof_X"]) == len(X) and len(xc["test_X"]) == len(Xt)
+        X = np.concatenate([X, xc["oof_X"]], 1); Xt = np.concatenate([Xt, xc["test_X"]], 1)
     if onehot:
         X = np.concatenate([X, np.eye(N_CLS - 1)[key[:, 1] - 1]], 1); Xt = np.concatenate([Xt, np.eye(N_CLS - 1)[kt[:, 1] - 1]], 1)
     true = np.array([(y[sbj == s] == c).sum() / TRAIN_SETS.get(int(s), 1) for s, c in key], np.float64)
@@ -63,6 +66,7 @@ def main():
     ap.add_argument("--redecode", type=int, default=0, help="extra rounds: re-decode every full fit with the fused counts")
     ap.add_argument("--whiten", type=float, default=0.5, help="per-subject whitening power used by --redecode (0 = raw)")
     ap.add_argument("--count_log", action="store_true", help="count ridge on log(count)")
+    ap.add_argument("--xcount", default="", help="npz with oof_X / test_X extra count features (e.g. subs/xcount_w25.npz)")
     a = ap.parse_args()
     global COUNT_LOG
     COUNT_LOG = a.count_log
@@ -95,7 +99,8 @@ def main():
         log(f"  {f['name']}: count error {np.abs(c_o - true).mean():.2f}, OOF F1 {macro_f1(y, lab):.4f}"
             + (f" (kernel final {macro_f1(y, f['QB_OOF'].argmax(1)):.4f}, refined {macro_f1(y, f['ref_oof']):.4f})" if "ref_oof" in f else ""))
     xo = [f["P_o"] for f in fits] if a.fit_prof else []; xt = [f["P_t"] for f in fits] if a.fit_prof else []
-    cnt, ct, key, kt, true = counts_for([Po, Bpo] + xo, [Pt, Bpt] + xt, y, sbj, tsbj, fold_of, a.onehot)
+    XC = np.load(a.xcount) if a.xcount else None
+    cnt, ct, key, kt, true = counts_for([Po, Bpo] + xo, [Pt, Bpt] + xt, y, sbj, tsbj, fold_of, a.onehot, XC)
     if a.count_avg:
         cnt = 0.5 * cnt + 0.5 * np.mean([f["cnt"] for f in fits], 0); ct = 0.5 * ct + 0.5 * np.mean([f["ct"] for f in fits], 0)
     tg, tgt = count_targets(sbj, TRAIN_SETS, key, cnt), count_targets(tsbj, {}, kt, ct)

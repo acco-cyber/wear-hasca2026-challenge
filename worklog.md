@@ -129,6 +129,17 @@ evidence; decoder/link tweaks that only re-process our own predictions do not tr
 - No gain: chain-context IMU expert (0.9312 vs 0.9311), global timeline assembly from chain fragments (fragments ~2
   nodes long; 0.9324 vs 0.9327), majority votes (OOF 0.9360, LB 0.93450).
 
+## 2026-10-07 .. 10-09
+- 4-limb 2025 IMU class-mass features in the count prior (`exp/v4/count_w25.py`, `v4_combine.py --xcount`): OOF 0.9345
+  (22 features) / 0.9354 (2 features) vs 0.9354: no new count information.
+- LightGBM's DLL was blocked by Windows Application Control on 10-07 (worked again on 10-09); NumPy-only majority votes
+  (`exp/v4/vote_np.py`): OOF 0.9364, LB 0.93346-0.93516.
+- New public notebooks (10-07..09): goodpjw2008 Part 2 (ranked link scorer, OOF 0.9308, LB 0.92990), bagged boundary
+  refiner (LB 0.92843), jiweiliu inference notebooks (Briano-family models). Fusing Part 2's final Q into our 4-run
+  chain-link fusion: count error 6.72 -> 6.30, OOF 0.9354 -> 0.9357, LB 0.93308.
+- Public-LB noise (goodpjw Part 2 section 10, 27 paired submissions): about +-0.004 around the OOF line; beyond OOF
+  ~0.926 the LB no longer follows OOF. Best public 0.93597 (label-flip variant made in another session).
+
 ## 2026-10-02 (3 submissions)
 - Per-subject cross-fitted self-training (`exp/hyb/selftrain_cv.py`): a small LightGBM per subject trained on the
   pipeline's own pseudo-labels (5-fold over the subject's windows), multiplied into the graph output. Alone 0.859, as a

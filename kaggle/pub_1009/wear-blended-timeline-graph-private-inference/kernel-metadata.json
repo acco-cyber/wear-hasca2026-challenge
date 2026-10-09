@@ -1,0 +1,26 @@
+{
+  "id": "jiweiliu/wear-blended-timeline-graph-private-inference",
+  "id_no": 136358029,
+  "title": "WEAR blended timeline graph private inference",
+  "code_file": "wear-blended-timeline-graph-private-inference.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": false,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": false,
+  "keywords": [
+    "gpu"
+  ],
+  "dataset_sources": [
+    "jiweiliu/wear-subject-context-private-models",
+    "jiweiliu/wear-timeline-graph-models"
+  ],
+  "kernel_sources": [],
+  "competition_sources": [
+    "3rd-wear-dataset-challenge-hasca-2026"
+  ],
+  "model_sources": [],
+  "docker_image": "gcr.io/kaggle-private-byod/python@sha256:37c64f7dd9c54116ecd1bcc88817c5469b88387388fade02bfa8bf3fc647d461",
+  "machine_shape": "NvidiaTeslaT4"
+}
